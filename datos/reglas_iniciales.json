@@ -1,0 +1,1564 @@
+{
+	"reglas": [
+		{
+			"patron": "abono",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Gastos Personales",
+				"categoria2": "Regalos",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "acnur",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Gastos Personales",
+				"categoria2": "Donaciones",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "ACNUR",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "aldi",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Alimentación",
+				"categoria2": "Compra",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "alhambra cyberpac",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ocio",
+				"categoria2": "Viajes",
+				"categoria3": "Excursiones/museos",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "alquileres lurbide, s. l.",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Vivienda",
+				"categoria2": "Reforma",
+				"categoria3": "contenedor",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "alquiler",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Vivienda",
+				"categoria2": "Alquiler",
+				"categoria3": "",
+				"entidad": "Piso",
+				"proveedor": "",
+				"tipo_gasto": "Fijos"
+			}
+		},
+		{
+			"patron": "altafit",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Salud",
+				"categoria2": "Gym",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "Altafit",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "amazon prime*ra0t52pt4",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Gastos Personales",
+				"categoria2": "Subscripciones y Apps",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "Amazon",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "amazon* hb6pv9zt5",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Gastos Personales",
+				"categoria2": "Equipamiento",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "Amazon",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "amzn mktp es*rt4ax0844",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Gastos Personales",
+				"categoria2": "Equipamiento",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "apertura cuenta",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Finanzas",
+				"categoria2": "Balance",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "apple.com/bill",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Gastos Personales",
+				"categoria2": "Subscripciones y Apps",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "Apple",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "artea oil sa",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Transporte",
+				"categoria2": "Gasolina",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "aut. vasco aragonesa ap68",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Transporte",
+				"categoria2": "Peaje",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "autobuses la union",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Transporte",
+				"categoria2": "Transporte Público",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "axa seguros generales cif a-60917978",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Transporte",
+				"categoria2": "Seguros",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "axa seguros generales",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Vivienda",
+				"categoria2": "Seguros",
+				"categoria3": "Hogar",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "bajadita",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ocio",
+				"categoria2": "Comer fuera",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "bei",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Transporte",
+				"categoria2": "Transporte Público",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "bm salburua",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Alimentación",
+				"categoria2": "Compra",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "BM",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "cafe la fontaine",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ocio",
+				"categoria2": "Comer fuera",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "carrefour",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Alimentación",
+				"categoria2": "Compra",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "cashback",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Finanzas",
+				"categoria2": "Intereses",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "cepsa",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Transporte",
+				"categoria2": "Gasolina",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "comision de mantenimiento",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Finanzas",
+				"categoria2": "Comisiones",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "commune de bayonne",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ocio",
+				"categoria2": "Comer fuera",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "compra de prime video",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ocio",
+				"categoria2": "Subscripciones y Apps",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "comunidad de propietarios",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Vivienda",
+				"categoria2": "Gastos comunidad",
+				"categoria3": "",
+				"entidad": "Piso",
+				"proveedor": "",
+				"tipo_gasto": "Fijos"
+			}
+		},
+		{
+			"patron": "consum",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Alimentación",
+				"categoria2": "Compra",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "cop. andalucia 28-62 garajes",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Vivienda",
+				"categoria2": "Gastos comunidad",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Fijos"
+			}
+		},
+		{
+			"patron": "costelo restaurant",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ocio",
+				"categoria2": "Comer fuera",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "decathlon",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ropa",
+				"categoria2": "Deporte",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "Decathlon",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "deporvillage",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Gastos Personales",
+				"categoria2": "Regalos",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "disposicion",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Finanzas",
+				"categoria2": "Balance",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "dreamfit vitoria",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Salud",
+				"categoria2": "Gym",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "Dreamfit",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "e.s.andamur san roman",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Transporte",
+				"categoria2": "Gasolina",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "ecolaundry",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Vivienda",
+				"categoria2": "Limpieza",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "Ecolaundry",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "el corte ingles vitoria",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Gastos Personales",
+				"categoria2": "Regalos",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "El Corte Ingles",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "el remiendo alaves 3",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Gastos Personales",
+				"categoria2": "Equipamiento",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "emilie and the c",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ocio",
+				"categoria2": "Comer fuera",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "empresa de servicios",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Vivienda",
+				"categoria2": "Energia",
+				"categoria3": "Agua",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Fijos"
+			}
+		},
+		{
+			"patron": "eroski center avda.santia",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Alimentación",
+				"categoria2": "Compra",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "Eroski",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "eroski",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Alimentación",
+				"categoria2": "Compra",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "Eroski",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "estacion de servicio olea",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Transporte",
+				"categoria2": "Gasolina",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "euskadi low cost",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Transporte",
+				"categoria2": "Gasolina",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "farmacia",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Salud",
+				"categoria2": "Farmacia",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "ferreteria olaguibel",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Vivienda",
+				"categoria2": "Equipamiento",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "forum sport",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ropa",
+				"categoria2": "Deporte",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "Forum Sport",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "froiz",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Alimentación",
+				"categoria2": "Compra",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "gadis",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Alimentación",
+				"categoria2": "Compra",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "galp",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Transporte",
+				"categoria2": "Gasolina",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "gasteiz training",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Salud",
+				"categoria2": "Deporte",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "Gasteiz training",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "hammam granada",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ocio",
+				"categoria2": "Viajes",
+				"categoria3": "Excursiones/museos",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "hipoteca",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Vivienda",
+				"categoria2": "Hipoteca",
+				"categoria3": "",
+				"entidad": "Piso",
+				"proveedor": "",
+				"tipo_gasto": "Fijos"
+			}
+		},
+		{
+			"patron": "ibi",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Vivienda",
+				"categoria2": "Impuestos",
+				"categoria3": "",
+				"entidad": "Piso",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "ikea",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Vivienda",
+				"categoria2": "Equipamiento",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "just eat spain",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ocio",
+				"categoria2": "Comer fuera",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "Just Eat",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "leroy merlin",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Vivienda",
+				"categoria2": "Equipamiento",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "Leroy Merlin",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "lidl",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Alimentación",
+				"categoria2": "Compra",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "lowi",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Comunicaciones",
+				"categoria2": "Internet y moviles",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "Lowi",
+				"tipo_gasto": "Fijos"
+			}
+		},
+		{
+			"patron": "lps bayonne",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ocio",
+				"categoria2": "Comer fuera",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "maialen fernandez psicolo",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Salud",
+				"categoria2": "Psicologo",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Fijos"
+			}
+		},
+		{
+			"patron": "masmovil",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Comunicaciones",
+				"categoria2": "Internet y moviles",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Fijos"
+			}
+		},
+		{
+			"patron": "mercadona",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Alimentación",
+				"categoria2": "Compra",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "metro bilbao",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Transporte",
+				"categoria2": "",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "movistar",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Comunicaciones",
+				"categoria2": "Internet y moviles",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Fijos"
+			}
+		},
+		{
+			"patron": "muebles",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Vivienda",
+				"categoria2": "Equipamiento",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "netflix.com",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Gastos Personales",
+				"categoria2": "Subscripciones y Apps",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "Netflix",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "nomina",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ingresos",
+				"categoria2": "Salario",
+				"categoria3": "Paga normal",
+				"entidad": "Iñaki",
+				"proveedor": "ZIV",
+				"tipo_gasto": "Fijos"
+			}
+		},
+		{
+			"patron": "ona low cost zadorra",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Transporte",
+				"categoria2": "Gasolina",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "orange",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Comunicaciones",
+				"categoria2": "Internet y moviles",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Fijos"
+			}
+		},
+		{
+			"patron": "paga extra",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ingresos",
+				"categoria2": "Salario",
+				"categoria3": "Paga extra",
+				"entidad": "Iñaki",
+				"proveedor": "ZIV",
+				"tipo_gasto": "Fijos"
+			}
+		},
+		{
+			"patron": "parkimetros ota",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Transporte",
+				"categoria2": "Aparcamiento",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "paypal *deporvillag",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Gastos Personales",
+				"categoria2": "Regalos",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "paypal *elcorteingl",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Gastos Personales",
+				"categoria2": "Regalos",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "paypal *leroymerlin",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Vivienda",
+				"categoria2": "Equipamiento",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "paypal *tesysintern",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Gastos Personales",
+				"categoria2": "Subscripciones y Apps",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "paypal europe s.a.r.l. et cie s.c.a",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ocio",
+				"categoria2": "Videojuegos",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "petroprix vitoria",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Transporte",
+				"categoria2": "Gasolina",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "polleria magda",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Alimentación",
+				"categoria2": "Compra",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "reale vida y pensiones,s.a.",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Vivienda",
+				"categoria2": "Seguros",
+				"categoria3": "Vida",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "ref. mandato 72744",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ahorro",
+				"categoria2": "Jubilación",
+				"categoria3": "",
+				"entidad": "Iñaki",
+				"proveedor": "",
+				"tipo_gasto": "Fijos"
+			}
+		},
+		{
+			"patron": "renfe",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Transporte",
+				"categoria2": "Transporte Público",
+				"categoria3": "Tren",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "repsol waylet",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Transporte",
+				"categoria2": "Gasolina",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "Repsol",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "spotify",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Gastos Personales",
+				"categoria2": "Subscripciones y Apps",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "Spotify",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "telefonica",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Comunicaciones",
+				"categoria2": "Internet y moviles",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Fijos"
+			}
+		},
+		{
+			"patron": "totalenergies clientessau",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Vivienda",
+				"categoria2": "Energia",
+				"categoria3": "Electricidad",
+				"entidad": "",
+				"proveedor": "Totalenergies",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "vodafone",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Comunicaciones",
+				"categoria2": "Internet y moviles",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "zara vitoria gral.alava",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Gastos Personales",
+				"categoria2": "Regalos",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "GASTOS PISO",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Finanzas",
+				"categoria2": "Balance",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Fijos"
+			}
+		},
+		{
+			"patron": "GASTOS CASA",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Finanzas",
+				"categoria2": "Balance",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Fijos"
+			}
+		},
+		{
+			"patron": "| GASTOS | GASTOS",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Finanzas",
+				"categoria2": "Balance",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Fijos"
+			}
+		},
+		{
+			"patron": "| OCIO",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ocio",
+				"categoria2": "Salidas",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "BANOS",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Vivienda",
+				"categoria2": "Reforma",
+				"categoria3": "",
+				"entidad": "Piso",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "| AHORRO | AHORRO",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ahorro",
+				"categoria2": "",
+				"categoria3": "",
+				"entidad": "Iñaki",
+				"proveedor": "",
+				"tipo_gasto": "Fijos"
+			}
+		},
+		{
+			"patron": "AHORRO COLCHON",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ahorro",
+				"categoria2": "Colchon",
+				"categoria3": "",
+				"entidad": "Iñaki",
+				"proveedor": "",
+				"tipo_gasto": "Fijos"
+			}
+		},
+		{
+			"patron": "| BALANCE",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Finanzas",
+				"categoria2": "Balance",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Fijos"
+			}
+		},
+		{
+			"patron": "| PEAJE",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Transporte",
+				"categoria2": "Peaje",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Fijos"
+			}
+		},
+		{
+			"patron": "CABECERO",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Vivienda",
+				"categoria2": "Equipamiento",
+				"categoria3": "",
+				"entidad": "Piso",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "MUEBLES",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Vivienda",
+				"categoria2": "Equipamiento",
+				"categoria3": "",
+				"entidad": "Piso",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "CONECTORES",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Vivienda",
+				"categoria2": "Equipamiento",
+				"categoria3": "",
+				"entidad": "Piso",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "GASOIL",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Transporte",
+				"categoria2": "Gasolina",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "PIZZAS",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ocio",
+				"categoria2": "Comer fuera",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "CHOCOLATE",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Alimentación",
+				"categoria2": "Compra",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "SEGURO COCHE",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Transporte",
+				"categoria2": "Seguros",
+				"categoria3": "",
+				"entidad": "Seat Leon",
+				"proveedor": "",
+				"tipo_gasto": "Fijos"
+			}
+		},
+		{
+			"patron": "regalo",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Gastos Personales",
+				"categoria2": "Regalos",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "ikea",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Vivienda",
+				"categoria2": "Equipamiento",
+				"categoria3": "",
+				"entidad": "Piso",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "el corte ingle",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Gastos Personales",
+				"categoria2": "Regalos",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "El Corte Ingles",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "bixoto",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Vivienda",
+				"categoria2": "Equipamiento",
+				"categoria3": "",
+				"entidad": "Piso",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "estacion de servicio",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Transporte",
+				"categoria2": "Gasolina",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "ona low cost",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Transporte",
+				"categoria2": "Gasolina",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "cloudflare",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Comunicaciones",
+				"categoria2": "Subscripciones y Apps",
+				"categoria3": "",
+				"entidad": "Iñaki",
+				"proveedor": "",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "telepizza",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ocio",
+				"categoria2": "Comer fuera",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "coviran",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Alimentación",
+				"categoria2": "Compra",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "justeat",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ocio",
+				"categoria2": "Comer fuera",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "Just Eat",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "fruteria",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Alimentación",
+				"categoria2": "Compra",
+				"categoria3": "Fruta",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Optimizable"
+			}
+		},
+		{
+			"patron": "yelmo cines",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ocio",
+				"categoria2": "Cine, teatro y conciertos",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "xiuying cheng",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ocio",
+				"categoria2": "Comer fuera",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "floris",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Gastos Personales",
+				"categoria2": "Regalos",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "juguetilandia",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Gastos Personales",
+				"categoria2": "Regalos",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "loteria",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ocio",
+				"categoria2": "Lotería",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "norauto",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Transporte",
+				"categoria2": "Mantenimiento y reparaciones",
+				"categoria3": "",
+				"entidad": "Seat Leon",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "la zapita",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ocio",
+				"categoria2": "Comer fuera",
+				"categoria3": "Restaurante",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "sonoff",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Vivienda",
+				"categoria2": "Equipamiento",
+				"categoria3": "Hogar",
+				"entidad": "Piso",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "amortizacion deuda",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Finanzas",
+				"categoria2": "Prestamo",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Fijos"
+			}
+		},
+		{
+			"patron": "bonificacion",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ingresos",
+				"categoria2": "Intereses",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "abonos varios",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ingresos",
+				"categoria2": "Intereses",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Excepcionales"
+			}
+		},
+		{
+			"patron": "vuelo",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ocio",
+				"categoria2": "Viajes",
+				"categoria3": "Avión",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "PAGO BIZUM - Comida",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ocio",
+				"categoria2": "Comer fuera",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Discrecionales"
+			}
+		},
+		{
+			"patron": "sushi",
+			"tipo": "contains",
+			"campos": {
+				"categoria1": "Ocio",
+				"categoria2": "Comer fuera",
+				"categoria3": "",
+				"entidad": "",
+				"proveedor": "",
+				"tipo_gasto": "Discrecionales"
+			}
+		}
+	]
+}

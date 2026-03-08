@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(presupuesto config:*)",
+      "Bash(presupuesto reglas:*)",
+      "Bash(pip3 install:*)",
+      "Bash(presupuesto maestro:*)"
+    ]
+  }
+}
