@@ -245,65 +245,39 @@ def pedir_categorizacion(
     datos_maestros: DatosMaestros,
     sugerencia: MovimientoCategorizado | None,
 ) -> dict | str:
-    """Flujo interactivo para completar la categorización de un movimiento.
+    """Abre el TUI multi-columna para categorizar el movimiento.
 
     Returns:
         dict     — campos completados (categoria1..tipo_gasto).
         "saltar" — el usuario quiere saltar este movimiento.
+        "volver" — el usuario quiere volver al movimiento anterior.
         "salir"  — el usuario quiere guardar progreso y salir.
     """
-    if sugerencia:
-        color, icono = _CONFIANZA_ESTILO.get(sugerencia.confianza, ("dim", "·"))
-        consola.print(
-            f"\n  [{color}]{icono}[/{color}] Confianza [{color}]{sugerencia.confianza}[/{color}].  "
-            "[dim]Enter[/dim] aceptar · "
-            "[dim]e[/dim] editar · "
-            "[dim]s[/dim] saltar · "
-            "[dim]v[/dim] volver · "
-            "[dim]q[/dim] salir"
+    from presupuesto.tui_categorizar import TUICategorizacion
+
+    if sugerencia is None:
+        # Crear una sugerencia vacía para que el TUI tenga los campos base
+        from presupuesto.categorizar import MovimientoCategorizado
+        from decimal import Decimal
+        sugerencia = MovimientoCategorizado(
+            año=0, mes="", categoria1="", categoria2="", categoria3="",
+            entidad="", importe=Decimal("0"), proveedor="", tipo_gasto="",
+            cuenta="", banco=None, tipo_cuenta=None,
         )
-        try:
-            resp = consola.input("\n  > ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            return "salir"
 
-        if resp == "":
-            return _campos_de_sugerencia(sugerencia)
-        if resp == "s":
-            return "saltar"
-        if resp == "v":
-            return "volver"
-        if resp == "q":
-            return "salir"
-        # 'e' u otro → editar campo a campo con valores de la sugerencia como default
-        valores_iniciales = _campos_de_sugerencia(sugerencia)
-    else:
-        consola.print("\n  [dim]Sin sugerencia. Completa los campos manualmente.[/dim]")
-        consola.print("  [dim]s[/dim] saltar · [dim]v[/dim] volver · [dim]q[/dim] salir\n")
-        valores_iniciales = {k: "" for k, _, _ in _CAMPOS}
+    tui = TUICategorizacion(sugerencia, datos_maestros)
+    resultado = tui.run()
 
-    # Edición campo a campo
-    resultado: dict[str, str] = {}
-    try:
-        for campo_key, campo_maestro, etiqueta in _CAMPOS:
-            inicial = valores_iniciales.get(campo_key, "")
-            opciones = datos_maestros.valores_validos(campo_maestro)
-            resultado[campo_key] = _seleccionar_valor(etiqueta, opciones, inicial)
-    except _Saltar:
-        return "saltar"
-    except _Volver:
-        return "volver"
-    except _Salir:
+    if resultado is None:
         return "salir"
-
     return resultado
 
 
-def preguntar_guardar_regla(concepto: str, campos: dict) -> dict | None:
+def preguntar_guardar_regla(concepto: str, campos: dict, cuenta: str = "") -> dict | None:
     """Pregunta al usuario si guardar la categorización como regla nueva.
 
     Returns:
-        dict — {patron, tipo, campos} listo para GestorReglas.añadir().
+        dict — {patron, tipo, campos, cuenta} listo para GestorReglas.añadir().
         None — el usuario no quiere guardar.
     """
     if not click.confirm("\n  ¿Guardar como regla de categorización?", default=False):
@@ -317,11 +291,15 @@ def preguntar_guardar_regla(concepto: str, campos: dict) -> dict | None:
     patron = click.prompt("  Patrón", default=patron_sugerido)
     tipo = click.prompt(
         "  Tipo de match",
-        type=click.Choice(["contains", "startswith", "regex"]),
+        type=click.Choice(["contains", "contains_all", "startswith", "regex"]),
         default="contains",
         show_choices=True,
     )
-    return {"patron": patron, "tipo": tipo, "campos": campos}
+    cuenta_regla = click.prompt(
+        "  Cuenta (vacío = aplica a todas)",
+        default=cuenta,
+    ).strip()
+    return {"patron": patron, "tipo": tipo, "campos": campos, "cuenta": cuenta_regla}
 
 
 def mostrar_resumen(movimientos: list[MovimientoCategorizado]) -> None:

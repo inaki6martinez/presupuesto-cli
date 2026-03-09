@@ -234,3 +234,25 @@ def test_multiples_movimientos_detecta_solo_los_duplicados(tmp_path):
     duplicados = detectar_duplicados(movs, ruta)
     assert len(duplicados) == 1
     assert duplicados[0][0].categoria1 == "Alimentación"
+
+
+def test_filas_presupuesto_no_se_consideran_duplicados(tmp_path):
+    """Filas con Estado='Presupuesto' no deben considerarse duplicados."""
+    ruta = tmp_path / "pres.xlsx"
+    _xlsx_con_datos(ruta, [
+        (2026, "Mar", "Alimentación", "Supermercados", "", "", -25.00,
+         "Eroski", "Discrecionales", "Cuenta Nomina", "Openbank", "Activos liquidos", "Presupuesto"),
+    ])
+    movs = [_mov_cat(importe=Decimal("-25.00"))]
+    assert detectar_duplicados(movs, ruta) == []
+
+
+def test_filas_real_si_se_consideran_duplicados(tmp_path):
+    """Filas con Estado='Real' sí deben considerarse duplicados."""
+    ruta = tmp_path / "pres.xlsx"
+    _xlsx_con_datos(ruta, [
+        (2026, "Mar", "Alimentación", "Supermercados", "", "", -25.00,
+         "Eroski", "Discrecionales", "Cuenta Nomina", "Openbank", "Activos liquidos", "Real"),
+    ])
+    movs = [_mov_cat(importe=Decimal("-25.00"))]
+    assert len(detectar_duplicados(movs, ruta)) == 1

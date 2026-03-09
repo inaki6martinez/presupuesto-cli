@@ -18,6 +18,9 @@ _RUTA_PENDIENTES = Path("~/.config/presupuesto/pendientes.json").expanduser()
 # Ruta al fichero de movimientos sin regla (generado por --dry-run)
 _RUTA_SIN_REGLA = Path("~/.config/presupuesto/sin_regla.json").expanduser()
 
+# Ruta al fichero de recuperación (generado cuando falla la escritura en xlsx)
+_RUTA_RECOVERY = Path("~/.config/presupuesto/recovery.json").expanduser()
+
 
 @click.group()
 @click.version_option(package_name="presupuesto-cli")
@@ -47,7 +50,7 @@ def cmd_importar(archivos, banco, cuenta, dry_run, no_interactivo, verbose, desd
     from presupuesto.config import cargar_config
     from presupuesto.duplicados import GestorMarcadores, detectar_duplicados
     from presupuesto.escritor import EscritorDatos
-    from presupuesto.interactivo import mostrar_resumen, pedir_confirmacion_escritura
+    from presupuesto.interactivo import mostrar_resumen
     from presupuesto.maestro import DatosMaestros
 
     # --- Validar fecha --desde ---
@@ -141,6 +144,7 @@ def cmd_importar(archivos, banco, cuenta, dry_run, no_interactivo, verbose, desd
         # lo que permite deshacer el efecto de procesar i-1 al pedir "volver".
         snapshots: list[tuple[int, int]] = []
         idx = 0
+        forzar_interactivo = False   # True tras un "volver" para no auto-aceptar
         while idx < len(movimientos_crudos):
             mov_crudo = movimientos_crudos[idx]
 
@@ -150,7 +154,7 @@ def cmd_importar(archivos, banco, cuenta, dry_run, no_interactivo, verbose, desd
 
             sugerencia = categorizador.categorizar(mov_crudo, cuenta_archivo)
 
-            if not sugerencia.requiere_confirmacion:
+            if not sugerencia.requiere_confirmacion and not forzar_interactivo:
                 # Capa 1 (alta confianza) → aceptar automáticamente
                 todos_aceptados.append((mov_crudo, sugerencia, cuenta_archivo))
                 if verbose:
@@ -160,6 +164,8 @@ def cmd_importar(archivos, banco, cuenta, dry_run, no_interactivo, verbose, desd
                     )
                 idx += 1
                 continue
+
+            forzar_interactivo = False
 
             if dry_run:
                 # En dry-run: aceptar la sugerencia tal cual para mostrarla en el resumen
@@ -197,6 +203,7 @@ def cmd_importar(archivos, banco, cuenta, dry_run, no_interactivo, verbose, desd
                     del pendientes[snap_pend:]
                     del snapshots[idx:]  # el snapshot de idx se regenerará al volver
                     idx -= 1
+                    forzar_interactivo = True  # mostrar TUI aunque sea alta confianza
                 else:
                     consola.print("  [dim]Ya estás en el primer movimiento.[/dim]")
                 continue
@@ -212,36 +219,15 @@ def cmd_importar(archivos, banco, cuenta, dry_run, no_interactivo, verbose, desd
     movs_cat = [cat for (_, cat, _) in todos_aceptados]
     agrupados = agrupar_movimientos(movs_cat)
 
-    # --- Detectar duplicados ---
-    if agrupados:
-        duplicados = detectar_duplicados(agrupados, ruta_xlsx)
-        if duplicados:
-            consola.print(
-                f"\n[bold yellow]⚠  {len(duplicados)} posible(s) duplicado(s) detectado(s):[/bold yellow]"
-            )
-            for mov_dup, fila in duplicados:
-                consola.print(
-                    f"  fila {fila}: {mov_dup.categoria1} / {mov_dup.proveedor} "
-                    f"  {mov_dup.importe:+.2f} ({mov_dup.mes} {mov_dup.año})"
-                )
-            if not click.confirm("\n¿Continuar igualmente?", default=False):
-                consola.print("[dim]Importación cancelada.[/dim]")
-                return
+    # --- Expandir cuotas hipotecarias ---
+    from presupuesto.hipoteca import expandir_hipotecas
+    agrupados = expandir_hipotecas(agrupados, ruta_xlsx, datos_maestros)
 
-    # --- Resumen ---
-    mostrar_resumen(agrupados)
-
-    if exportar and agrupados:
-        _exportar_csv(agrupados, todos_aceptados, exportar)
-
-    if pendientes:
-        consola.print(
-            f"[yellow]{len(pendientes)} movimiento(s) sin categorizar "
-            "quedarán en pendientes.[/yellow]"
-        )
-
-    # --- Dry-run ---
+    # --- Dry-run: resumen y salir ---
     if dry_run:
+        mostrar_resumen(agrupados)
+        if exportar and agrupados:
+            _exportar_csv(agrupados, todos_aceptados, exportar)
         consola.print("\n[yellow]--dry-run activo: no se ha escrito nada.[/yellow]")
         if pendientes:
             consola.print(
@@ -264,18 +250,50 @@ def cmd_importar(archivos, banco, cuenta, dry_run, no_interactivo, verbose, desd
         _guardar_pendientes(pendientes)
         return
 
-    # --- Confirmación y escritura ---
-    if not pedir_confirmacion_escritura(len(agrupados)):
+    # --- Detectar duplicados (TUI) ---
+    from presupuesto.tui_revision import TUIRevisionDuplicados, TUIRevisionFinal
+
+    duplicados = detectar_duplicados(agrupados, ruta_xlsx)
+    if duplicados:
+        tui_dups = TUIRevisionDuplicados(duplicados)
+        excluidos_idx = tui_dups.run()
+        if excluidos_idx:
+            excluir_ids = {id(duplicados[i][0]) for i in excluidos_idx}
+            agrupados = [m for m in agrupados if id(m) not in excluir_ids]
+
+    if not agrupados:
+        consola.print("[yellow]Todos los movimientos fueron excluidos.[/yellow]")
+        return
+
+    # --- Revisión final y confirmación (TUI) ---
+    tui_final = TUIRevisionFinal(agrupados, datos_maestros)
+    if not tui_final.run():
         consola.print("[dim]Importación cancelada.[/dim]")
         return
+
+    if exportar:
+        _exportar_csv(agrupados, todos_aceptados, exportar)
+
+    if pendientes:
+        consola.print(
+            f"[yellow]{len(pendientes)} movimiento(s) sin categorizar "
+            "quedarán en pendientes.[/yellow]"
+        )
 
     try:
         escritor = EscritorDatos(ruta_xlsx)
         n_escritos = escritor.escribir(agrupados)
     except Exception as e:
         consola.print(f"[red]Error al escribir en el xlsx:[/red] {e}")
+        ruta_guardada = _guardar_recovery(agrupados, ruta_xlsx)
+        consola.print(
+            f"[yellow]Los {len(agrupados)} movimiento(s) se han guardado para recuperación.[/yellow]\n"
+            f"  Cierra el archivo xlsx y ejecuta:  [bold]presupuesto recuperar[/bold]\n"
+            f"  (fichero: {ruta_guardada})"
+        )
         return
 
+    _RUTA_RECOVERY.unlink(missing_ok=True)   # limpiar recovery si existía
     consola.print(f"\n[green]✓ {n_escritos} fila(s) escritas en presupuesto.xlsx.[/green]")
 
     # --- Actualizar marcadores ---
@@ -449,14 +467,16 @@ def _procesar_interactivo(
     )
 
     # Ofrecer guardar como regla
-    regla = preguntar_guardar_regla(mov_crudo.concepto, resultado)
+    regla = preguntar_guardar_regla(mov_crudo.concepto, resultado, cuenta=sugerencia.cuenta)
     if regla:
         gestor_reglas.añadir(
             patron=regla["patron"],
             tipo=regla["tipo"],
             campos=regla["campos"],
+            cuenta=regla.get("cuenta", ""),
         )
-        consola.print(f"  [green]Regla guardada:[/green] '{regla['patron']}'")
+        cuenta_info = f" [{regla['cuenta']}]" if regla.get("cuenta") else ""
+        consola.print(f"  [green]Regla guardada:[/green] '{regla['patron']}'{cuenta_info}")
 
     return cat_final
 
@@ -557,6 +577,38 @@ def _guardar_sin_regla(movimientos) -> int:
             encoding="utf-8",
         )
     return len(nuevas)
+
+
+def _guardar_recovery(agrupados: list, ruta_xlsx: str) -> Path:
+    """Guarda los movimientos categorizados en recovery.json para poder reintentarlos."""
+    from datetime import datetime
+    _RUTA_RECOVERY.parent.mkdir(parents=True, exist_ok=True)
+    movs = []
+    for m in agrupados:
+        d = dataclasses.asdict(m)
+        d["importe"] = str(d["importe"])
+        movs.append(d)
+    datos = {
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "ruta_xlsx": str(ruta_xlsx),
+        "movimientos": movs,
+    }
+    _RUTA_RECOVERY.write_text(json.dumps(datos, ensure_ascii=False, indent=2), encoding="utf-8")
+    return _RUTA_RECOVERY
+
+
+def _cargar_recovery() -> tuple[list, str] | None:
+    """Carga los movimientos de recovery.json. Devuelve (movimientos, ruta_xlsx) o None."""
+    if not _RUTA_RECOVERY.exists():
+        return None
+    from decimal import Decimal
+    from presupuesto.categorizar import MovimientoCategorizado
+    datos = json.loads(_RUTA_RECOVERY.read_text(encoding="utf-8"))
+    movs = []
+    for d in datos["movimientos"]:
+        d["importe"] = Decimal(d["importe"])
+        movs.append(MovimientoCategorizado(**d))
+    return movs, datos["ruta_xlsx"]
 
 
 def _guardar_pendientes(pendientes: list[dict]) -> None:
@@ -1182,7 +1234,44 @@ def maestro_todo():
     consola.print(_tabla_cuentas(m.claves_cuentas()))
 
 
+@click.command("recuperar")
+def cmd_recuperar():
+    """Reintenta escribir en xlsx los movimientos guardados tras un fallo anterior."""
+    resultado = _cargar_recovery()
+    if resultado is None:
+        consola.print("[dim]No hay movimientos pendientes de recuperación.[/dim]")
+        return
+
+    agrupados, ruta_xlsx = resultado
+    from datetime import datetime
+    datos_raw = json.loads(_RUTA_RECOVERY.read_text(encoding="utf-8"))
+    ts = datos_raw.get("timestamp", "desconocido")
+    consola.print(
+        f"[yellow]Recuperación:[/yellow] {len(agrupados)} movimiento(s) del {ts}\n"
+        f"  → [bold]{ruta_xlsx}[/bold]"
+    )
+    if not click.confirm("\n¿Intentar escribir ahora?", default=True):
+        consola.print("[dim]Cancelado. El fichero recovery.json se mantiene.[/dim]")
+        return
+
+    try:
+        from presupuesto.escritor import EscritorDatos
+        escritor = EscritorDatos(ruta_xlsx)
+        n_escritos = escritor.escribir(agrupados)
+    except Exception as e:
+        consola.print(f"[red]Error al escribir en el xlsx:[/red] {e}")
+        consola.print("[dim]El fichero recovery.json se mantiene para el próximo intento.[/dim]")
+        return
+
+    _RUTA_RECOVERY.unlink(missing_ok=True)
+    consola.print(f"\n[green]✓ {n_escritos} fila(s) escritas en presupuesto.xlsx.[/green]")
+
+
 cli.add_command(cmd_importar)
+cli.add_command(cmd_recuperar)
 cli.add_command(cmd_reglas)
 cli.add_command(cmd_config)
 cli.add_command(cmd_maestro)
+
+from presupuesto.cmd_actualizar import cmd_actualizar  # noqa: E402
+cli.add_command(cmd_actualizar)

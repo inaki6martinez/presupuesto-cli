@@ -466,7 +466,6 @@ Añadir tests en `tests/test_escritor.py`, `tests/test_agrupador.py` y `tests/te
 
 ## Paso 12 - Los casos distintos
 
-> **Caso 1**: Convertir el movimiento de la hipoteca en un ahorro y gastos teniendo en cuenta la tabla de amortización. Y que se tenga en cuenta para reducir la deuda pendiente.
 > **Caso 2**: Los fondos, añadir el balance mensual para el caso de los fondos y los EPSV.
 
 ## Notas para el desarrollo

@@ -1,21 +1,17 @@
 """Parser de extractos bancarios de BBVA.
 
-BBVA exporta un XLSX con una hoja "Informe BBVA" y esta estructura:
+BBVA exporta un XLSX con una hoja "Informe BBVA" en dos idiomas:
 
-- Fila 2: título "Latest transactions"
-- Fila 3: fecha de generación del informe
-- Fila 5: cabecera — col B: Eff. Date | col C: Date | col D: Item |
-          col E: Transaction | col F: Amount | col H: Available | col J: Comments
-- Datos desde fila 6, sin filas vacías intercaladas.
+Inglés (formato americano):
+- Fila 5: Eff. Date | Date | Item | Transaction | Amount | ... | Comments
+- Fechas en MM/DD/YYYY
 
-Particularidades:
-- Fechas en formato MM/DD/YYYY (formato americano).
-- Importe en col F como float (negativo = gasto).
-- Col D (Item): nombre del comercio o tipo genérico de operación.
-- Col E (Transaction): descripción adicional (concepto de transferencia, tipo de pago).
-- Para tarjeta, Item tiene el comercio ("Netflix.com", "Bazar chinatown").
-- Para transferencias, Item es genérico ("Transfer received") y Transaction tiene el detalle.
-- Para domiciliaciones, Item tiene el proveedor ("Vodafone debit", "Debit digi spain telecom sa").
+Español:
+- Fila 5: F.Valor | Fecha | Concepto | Movimiento | Importe | ... | Observaciones
+- Fechas en DD/MM/YYYY
+
+Las columnas son las mismas en ambos formatos (B=fecha, D=item/concepto,
+E=transaction/movimiento, F=importe, J=comments/observaciones).
 """
 
 from __future__ import annotations
@@ -29,58 +25,85 @@ import openpyxl
 
 from presupuesto.parsers.base import MovimientoCrudo, ParserBase
 
-# Items genéricos donde Transaction o Comments tienen la info real
-_ITEMS_GENERICOS = re.compile(
+# ── Patrones inglés ────────────────────────────────────────────────────────────
+
+_ITEMS_GENERICOS_EN = re.compile(
     r"^(transfer (received|completed)|service company debit|"
     r"fee for |credit interest|debit interest)",
     re.IGNORECASE,
 )
-
-# Items genéricos donde Comments puede tener el proveedor real
-_ITEMS_USA_COMMENTS = re.compile(
+_ITEMS_USA_COMMENTS_EN = re.compile(
     r"^service company debit$",
     re.IGNORECASE,
 )
-
-# Patterns en Transaction que no aportan info (mejor ignorarlos)
-_TRANSACTION_GENERICA = re.compile(
+_TRANSACTION_GENERICA_EN = re.compile(
     r"^(card payment|debit no \d+|payment of sepa direct debit)$",
     re.IGNORECASE,
 )
 
-# Prefijo numérico en Comments: "N 2026061002269417 Aguas Municipales..."
+# ── Patrones español ───────────────────────────────────────────────────────────
+
+# Conceptos genéricos donde el Movimiento tiene la info real
+_ITEMS_GENERICOS_ES = re.compile(
+    r"^(transferencia (recibida|realizada)|cargo por )",
+    re.IGNORECASE,
+)
+# Conceptos donde Observaciones tiene el nombre real (domiciliaciones)
+_ITEMS_USA_COMMENTS_ES = re.compile(
+    r"^adeudo",
+    re.IGNORECASE,
+)
+# Movimientos genéricos que no aportan info (ignorar → usar Concepto)
+_TRANSACTION_GENERICA_ES = re.compile(
+    r"^(pago con tarjeta|adeudo n[oº]\s+\d+|pago de adeudo directo sepa)$",
+    re.IGNORECASE,
+)
+
+# ── Común ──────────────────────────────────────────────────────────────────────
+
+# Prefijo numérico en Comments/Observaciones: "N 2026061002269417 Aguas Municipales..."
 _RE_PREFIJO_COMMENTS = re.compile(r"^[N]\s+\d+\s+", re.IGNORECASE)
 
-# Columnas (1-based) en la hoja
-_COL_FECHA_EF = 2   # Eff. Date
-_COL_ITEM = 4       # Item
-_COL_TRANS = 5      # Transaction
-_COL_IMPORTE = 6    # Amount
-_COL_COMMENTS = 10  # Comments (proveedor real en domiciliaciones)
+# Headers que identifican cada idioma
+_HEADERS_EN = {"eff. date", "item", "amount"}
+_HEADERS_ES = {"f.valor", "concepto", "importe"}
+
+# Nombres de columna por idioma: fecha, item/concepto, transaction/movimiento,
+# importe, comments/observaciones
+_COL_NOMBRES = {
+    "en": ("eff. date", "item",     "transaction", "amount",  "comments"),
+    "es": ("f.valor",   "concepto", "movimiento",  "importe", "observaciones"),
+}
 
 
 def _limpiar_comments(texto: str) -> str:
-    """Elimina el prefijo 'N 123456789 ' de los Comments de BBVA."""
+    """Elimina el prefijo 'N 123456789 ' de Comments/Observaciones de BBVA."""
     return _RE_PREFIJO_COMMENTS.sub("", texto).strip()
 
 
-def _parsear_fecha(valor: str) -> date:
-    """Convierte 'MM/DD/YYYY' (formato BBVA) a date."""
+def _parsear_fecha(valor: str, lang: str) -> date:
+    """Convierte fecha BBVA a date. Inglés: MM/DD/YYYY. Español: DD/MM/YYYY."""
     valor = valor.strip()
     try:
-        mes, dia, año = valor.split("/")
+        a, b, c = valor.split("/")
+        if lang == "es":
+            dia, mes, año = a, b, c
+        else:
+            mes, dia, año = a, b, c
         return date(int(año), int(mes), int(dia))
     except ValueError as e:
         raise ValueError(f"Fecha de BBVA no reconocida: '{valor}'") from e
 
 
-def _construir_concepto(item: str, transaction: str, comments: str) -> str:
-    """Elige el texto más informativo como concepto.
+def _construir_concepto(
+    item: str, transaction: str, comments: str, lang: str
+) -> str:
+    """Elige el texto más informativo como concepto según el idioma del extracto.
 
     Prioridad:
-    1. 'Service company debit' → Comments (tiene el proveedor real, p.ej. Aguas Municipales).
-    2. Transfers (Item genérico) → Transaction.
-    3. Transaction genérica (Card payment, Debit no...) → solo Item.
+    1. Item/Concepto es una domiciliación → usar Comments/Observaciones (nombre real).
+    2. Transaction/Movimiento es genérico o vacío → usar solo Item/Concepto.
+    3. Item/Concepto es genérico (transferencia...) → usar Transaction/Movimiento.
     4. Ambos con info → "{Item} - {Transaction}".
     """
     item        = " ".join(item.split())
@@ -90,64 +113,69 @@ def _construir_concepto(item: str, transaction: str, comments: str) -> str:
     if not item:
         return transaction or comments
 
-    # Domiciliaciones de empresa: los Comments tienen el nombre real del proveedor
-    if _ITEMS_USA_COMMENTS.match(item):
+    if lang == "es":
+        usa_comments  = _ITEMS_USA_COMMENTS_ES
+        item_generico = _ITEMS_GENERICOS_ES
+        trans_generia = _TRANSACTION_GENERICA_ES
+    else:
+        usa_comments  = _ITEMS_USA_COMMENTS_EN
+        item_generico = _ITEMS_GENERICOS_EN
+        trans_generia = _TRANSACTION_GENERICA_EN
+
+    if usa_comments.match(item):
         comentario_limpio = _limpiar_comments(comments)
         if comentario_limpio:
             return comentario_limpio
 
-    if not transaction or _TRANSACTION_GENERICA.match(transaction):
+    if not transaction or trans_generia.match(transaction):
         return item
-    if _ITEMS_GENERICOS.match(item):
+    if item_generico.match(item):
         return transaction
 
     return f"{item} - {transaction}"
 
 
 class ParserBBVA(ParserBase):
-    """Parser para extractos XLSX de BBVA."""
+    """Parser para extractos XLSX de BBVA en inglés y español."""
 
     def puede_parsear(self, ruta_archivo: str) -> bool:
-        """Detecta si el archivo es un extracto XLSX de BBVA.
-
-        Comprueba la extensión .xlsx y que la hoja contenga la cabecera
-        característica de BBVA ("Eff. Date" e "Item" en la fila 5).
-        """
         ruta = Path(ruta_archivo)
         if ruta.suffix.lower() != ".xlsx":
             return False
         try:
             wb = openpyxl.load_workbook(str(ruta), read_only=True, data_only=True)
             ws = wb.active
-            # Buscar la fila de cabecera en las primeras 10 filas
             for row in ws.iter_rows(min_row=1, max_row=10, values_only=True):
-                valores = [str(v).strip().lower() for v in row if v is not None]
-                if "eff. date" in valores and "item" in valores and "amount" in valores:
+                vals = {str(v).strip().lower() for v in row if v is not None}
+                if _HEADERS_EN <= vals or _HEADERS_ES <= vals:
                     return True
             return False
         except Exception:
             return False
 
     def parsear(self, ruta_archivo: str) -> list[MovimientoCrudo]:
-        """Extrae los movimientos del XLSX de BBVA."""
         ruta = Path(ruta_archivo)
-        wb = openpyxl.load_workbook(str(ruta), data_only=True)
-        ws = wb.active
+        wb   = openpyxl.load_workbook(str(ruta), data_only=True)
+        ws   = wb.active
 
-        # Localizar fila de cabecera y mapear columnas por nombre
-        col_fecha = col_item = col_trans = col_importe = None
+        col_fecha = col_item = col_trans = col_importe = col_comments = None
         fila_inicio = None
+        lang = "en"
 
-        col_comments = None
         for r_idx, row in enumerate(ws.iter_rows(min_row=1, max_row=10, values_only=True), start=1):
-            valores_lower = [str(v).strip().lower() if v is not None else "" for v in row]
-            if "eff. date" in valores_lower and "amount" in valores_lower:
-                col_fecha    = valores_lower.index("eff. date") + 1
-                col_item     = valores_lower.index("item") + 1
-                col_trans    = valores_lower.index("transaction") + 1
-                col_importe  = valores_lower.index("amount") + 1
-                col_comments = valores_lower.index("comments") + 1 if "comments" in valores_lower else None
-                fila_inicio  = r_idx + 1
+            vals = [str(v).strip().lower() if v is not None else "" for v in row]
+
+            for idioma, (n_fecha, n_item, n_trans, n_imp, n_com) in _COL_NOMBRES.items():
+                if n_fecha in vals and n_imp in vals:
+                    col_fecha    = vals.index(n_fecha) + 1
+                    col_item     = vals.index(n_item)  + 1
+                    col_trans    = vals.index(n_trans) + 1
+                    col_importe  = vals.index(n_imp)   + 1
+                    col_comments = vals.index(n_com)   + 1 if n_com in vals else None
+                    fila_inicio  = r_idx + 1
+                    lang         = idioma
+                    break
+            if fila_inicio:
                 break
 
         if fila_inicio is None:
@@ -157,7 +185,7 @@ class ParserBBVA(ParserBase):
 
         for row in ws.iter_rows(min_row=fila_inicio, values_only=True):
             fecha_val    = row[col_fecha - 1]
-            item_val     = row[col_item - 1]
+            item_val     = row[col_item  - 1]
             trans_val    = row[col_trans - 1]
             importe_val  = row[col_importe - 1]
             comments_val = row[col_comments - 1] if col_comments else None
@@ -166,17 +194,17 @@ class ParserBBVA(ParserBase):
                 continue
 
             fecha_str    = str(fecha_val).strip()
-            item_raw     = str(item_val).strip() if item_val else ""
-            trans_raw    = str(trans_val).strip() if trans_val else ""
+            item_raw     = str(item_val).strip()    if item_val     else ""
+            trans_raw    = str(trans_val).strip()   if trans_val    else ""
             comments_raw = str(comments_val).strip() if comments_val else ""
             importe_str  = str(importe_val).strip()
 
             if not fecha_str:
                 continue
 
-            fecha    = _parsear_fecha(fecha_str)
+            fecha    = _parsear_fecha(fecha_str, lang)
             importe  = Decimal(importe_str).quantize(Decimal("0.01"))
-            concepto = _construir_concepto(item_raw, trans_raw, comments_raw)
+            concepto = _construir_concepto(item_raw, trans_raw, comments_raw, lang)
 
             concepto_original = f"{fecha_str} | {item_raw}"
             if trans_raw:

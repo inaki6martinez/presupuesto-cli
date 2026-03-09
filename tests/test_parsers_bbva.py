@@ -9,7 +9,8 @@ import pytest
 from presupuesto.parsers.bbva import ParserBBVA
 
 FIXTURE = Path(__file__).parent / "fixtures" / "bbva_ejemplo.xlsx"
-XLSX_REAL = Path(__file__).parent.parent / "movimientos_bancos" / "bbva_20250503_20260307.xlsx"
+XLSX_REAL    = Path(__file__).parent.parent / "movimientos_bancos" / "bbva_20250503_20260307.xlsx"
+XLSX_REAL_ES = Path(__file__).parent.parent / "movimientos_bancos" / "bbva_20250503_20260309.xlsx"
 
 
 @pytest.fixture(scope="module")
@@ -166,3 +167,72 @@ def test_archivo_real_precision_decimales(parser):
     movs = parser.parsear(str(XLSX_REAL))
     assert Decimal("-13.99") in {m.importe for m in movs}
     assert Decimal("-843.88") in {m.importe for m in movs}
+
+
+# --- Archivo real en español ---
+
+def test_es_detectado(parser):
+    if not XLSX_REAL_ES.exists():
+        pytest.skip("Archivo real ES no disponible")
+    assert parser.puede_parsear(str(XLSX_REAL_ES)) is True
+
+def test_es_parsea_145_movimientos(parser):
+    if not XLSX_REAL_ES.exists():
+        pytest.skip("Archivo real ES no disponible")
+    movs = parser.parsear(str(XLSX_REAL_ES))
+    assert len(movs) == 145
+
+def test_es_fechas_formato_ddmmyyyy(parser):
+    """Formato español DD/MM/YYYY: primera fila es 03/03/2026 → 3 de marzo."""
+    if not XLSX_REAL_ES.exists():
+        pytest.skip("Archivo real ES no disponible")
+    movs = parser.parsear(str(XLSX_REAL_ES))
+    assert movs[0].fecha == date(2026, 3, 3)
+
+def test_es_tarjeta_usa_concepto(parser):
+    """Pago con tarjeta → Transaction genérica, usa Concepto (comercio)."""
+    if not XLSX_REAL_ES.exists():
+        pytest.skip("Archivo real ES no disponible")
+    movs = parser.parsear(str(XLSX_REAL_ES))
+    netflix = movs[0]
+    assert "Netflix" in netflix.concepto
+    assert "pago con tarjeta" not in netflix.concepto.lower()
+
+def test_es_transferencia_realizada_usa_movimiento(parser):
+    """Transferencia realizada → Item genérico, usa Movimiento."""
+    if not XLSX_REAL_ES.exists():
+        pytest.skip("Archivo real ES no disponible")
+    movs = parser.parsear(str(XLSX_REAL_ES))
+    transf = movs[1]
+    assert transf.importe == Decimal("-60.00")
+    assert "transferencia realizada" not in transf.concepto.lower()
+    assert "comunidad" in transf.concepto.lower()
+
+def test_es_adeudo_usa_observaciones(parser):
+    """Adeudo de empresa de servicios → usa Observaciones (sin prefijo N XXXX)."""
+    if not XLSX_REAL_ES.exists():
+        pytest.skip("Archivo real ES no disponible")
+    movs = parser.parsear(str(XLSX_REAL_ES))
+    adeudo = movs[2]
+    assert adeudo.importe == Decimal("-20.55")
+    assert "aguas municipales" in adeudo.concepto.lower()
+    assert not adeudo.concepto.startswith("N ")
+    assert "adeudo de empresa" not in adeudo.concepto.lower()
+
+def test_es_cargo_sin_movimiento_usa_concepto(parser):
+    """Cargo por amortizacion sin Movimiento → usa Concepto."""
+    if not XLSX_REAL_ES.exists():
+        pytest.skip("Archivo real ES no disponible")
+    movs = parser.parsear(str(XLSX_REAL_ES))
+    cargo = movs[3]
+    assert cargo.importe == Decimal("-843.88")
+    assert "amortizacion" in cargo.concepto.lower()
+
+def test_es_precision_decimales(parser):
+    if not XLSX_REAL_ES.exists():
+        pytest.skip("Archivo real ES no disponible")
+    movs = parser.parsear(str(XLSX_REAL_ES))
+    importes = {m.importe for m in movs}
+    assert Decimal("-13.99") in importes
+    assert Decimal("-843.88") in importes
+    assert Decimal("-20.55") in importes

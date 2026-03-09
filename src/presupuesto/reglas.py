@@ -5,7 +5,8 @@ Las reglas se almacenan en un fichero JSON con esta estructura:
   "reglas": [
     {
       "patron": "eroski",
-      "tipo": "contains" | "startswith" | "regex",
+      "tipo": "contains" | "startswith" | "regex" | "contains_all",
+      "cuenta": "Cuenta Nomina",   (opcional)
       "campos": {
         "categoria1": "...", "categoria2": "...", "categoria3": "...",
         "entidad": "...", "proveedor": "...", "tipo_gasto": "..."
@@ -13,6 +14,10 @@ Las reglas se almacenan en un fichero JSON con esta estructura:
     }
   ]
 }
+
+Si una regla tiene "cuenta", solo se aplica cuando el movimiento pertenece a
+esa cuenta. En la búsqueda se prueban primero las reglas específicas de la
+cuenta y, si ninguna hace match, las reglas sin cuenta asignada.
 """
 
 from __future__ import annotations
@@ -37,10 +42,14 @@ class CamposCategoria(TypedDict):
     tipo_gasto: str
 
 
-class Regla(TypedDict):
+class _ReglaBase(TypedDict):
     patron: str
-    tipo: str  # contains | startswith | regex
+    tipo: str  # contains | contains_all | startswith | regex
     campos: CamposCategoria
+
+
+class Regla(_ReglaBase, total=False):
+    cuenta: str  # opcional: limita la regla a una cuenta concreta
 
 
 def _hace_match(regla: Regla, concepto: str) -> bool:
@@ -91,16 +100,22 @@ class GestorReglas:
 
     # --- Consulta ---
 
-    def buscar_match(self, concepto: str) -> CamposCategoria | None:
+    def buscar_match(self, concepto: str, cuenta: str = "") -> CamposCategoria | None:
         """Devuelve los campos de la primera regla que haga match, o None."""
-        for regla in self._reglas:
-            if _hace_match(regla, concepto):
-                return regla["campos"]
-        return None
+        resultado = self.buscar_match_con_patron(concepto, cuenta)
+        return resultado[0] if resultado else None
 
-    def buscar_match_con_patron(self, concepto: str) -> tuple[CamposCategoria, str] | None:
-        """Devuelve (campos, patron) de la primera regla que haga match, o None."""
-        for regla in self._reglas:
+    def buscar_match_con_patron(
+        self, concepto: str, cuenta: str = ""
+    ) -> tuple[CamposCategoria, str] | None:
+        """Devuelve (campos, patron) de la primera regla que haga match, o None.
+
+        Prioridad: primero las reglas específicas de `cuenta`, luego las genéricas
+        (sin campo "cuenta"). Las reglas de otra cuenta nunca se aplican.
+        """
+        especificas = [r for r in self._reglas if r.get("cuenta", "") == cuenta and cuenta]
+        genericas   = [r for r in self._reglas if not r.get("cuenta", "")]
+        for regla in (*especificas, *genericas):
             if _hace_match(regla, concepto):
                 return regla["campos"], regla["patron"]
         return None
@@ -114,11 +129,13 @@ class GestorReglas:
 
     # --- Modificación ---
 
-    def añadir(self, patron: str, tipo: str, campos: CamposCategoria) -> None:
+    def añadir(self, patron: str, tipo: str, campos: CamposCategoria, cuenta: str = "") -> None:
         """Añade una nueva regla al final de la lista y guarda."""
         if tipo not in ("contains", "contains_all", "startswith", "regex"):
             raise ValueError(f"Tipo de regla inválido: '{tipo}'. Use contains, contains_all, startswith o regex.")
         regla: Regla = {"patron": patron, "tipo": tipo, "campos": campos}
+        if cuenta:
+            regla["cuenta"] = cuenta
         self._reglas.append(regla)
         self._guardar_lista(self._reglas)
 

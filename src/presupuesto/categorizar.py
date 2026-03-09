@@ -203,7 +203,7 @@ class Categorizador:
     # --- Capas internas ----------------------------------------------------
 
     def _capa_reglas(self, concepto: str, base: dict) -> MovimientoCategorizado | None:
-        resultado = self._reglas.buscar_match_con_patron(concepto)
+        resultado = self._reglas.buscar_match_con_patron(concepto, cuenta=base.get("cuenta", ""))
         if resultado is None:
             return None
         campos, patron = resultado

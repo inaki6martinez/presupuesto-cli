@@ -113,6 +113,10 @@ def detectar_duplicados(
     for r_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
         if not row or row[0] is None:
             continue
+        # Ignorar filas de presupuesto (Estado = col M = índice 12)
+        estado = str(row[12] or "").strip().lower() if len(row) > 12 else ""
+        if estado == "presupuesto":
+            continue
         try:
             año_ex    = int(row[0])
             mes_ex    = str(row[1] or "").strip()

@@ -222,6 +222,73 @@ def test_añadir_persiste_en_disco(tmp_path):
     assert gestor2.buscar_match("pago tienda nueva") is not None
 
 
+# --- Prioridad por cuenta ---
+
+def test_regla_cuenta_especifica_gana_sobre_generica(tmp_path):
+    """Una regla con 'cuenta' tiene prioridad sobre una genérica para esa cuenta."""
+    ruta = tmp_path / "reglas.json"
+    datos = {
+        "reglas": [
+            {"patron": "netflix", "tipo": "contains", "cuenta": "Cuenta Ocio",
+             "campos": {"categoria1": "Ocio", "categoria2": "Streaming", "categoria3": "",
+                        "entidad": "", "proveedor": "Netflix", "tipo_gasto": "Discrecionales"}},
+            {"patron": "netflix", "tipo": "contains",
+             "campos": {"categoria1": "Hogar", "categoria2": "Internet", "categoria3": "",
+                        "entidad": "", "proveedor": "Netflix", "tipo_gasto": "Fijos"}},
+        ]
+    }
+    ruta.write_text(json.dumps(datos), encoding="utf-8")
+    gestor = GestorReglas(ruta)
+
+    # Con la cuenta correcta → regla específica gana
+    resultado = gestor.buscar_match("netflix.com", cuenta="Cuenta Ocio")
+    assert resultado["categoria1"] == "Ocio"
+
+    # Con otra cuenta → solo aplica la genérica
+    resultado = gestor.buscar_match("netflix.com", cuenta="Cuenta Nomina")
+    assert resultado["categoria1"] == "Hogar"
+
+
+def test_regla_cuenta_no_aplica_a_otra_cuenta(tmp_path):
+    """Una regla con 'cuenta' no se aplica a movimientos de otra cuenta."""
+    ruta = tmp_path / "reglas.json"
+    datos = {
+        "reglas": [
+            {"patron": "especial", "tipo": "contains", "cuenta": "Cuenta Ocio",
+             "campos": {"categoria1": "Solo Ocio", "categoria2": "", "categoria3": "",
+                        "entidad": "", "proveedor": "", "tipo_gasto": ""}},
+        ]
+    }
+    ruta.write_text(json.dumps(datos), encoding="utf-8")
+    gestor = GestorReglas(ruta)
+
+    # Cuenta diferente → no hace match
+    assert gestor.buscar_match("especial", cuenta="Cuenta Nomina") is None
+    # Cuenta correcta → hace match
+    assert gestor.buscar_match("especial", cuenta="Cuenta Ocio") is not None
+
+
+def test_añadir_regla_con_cuenta(tmp_path):
+    """añadir() guarda el campo cuenta y se aplica solo para esa cuenta."""
+    ruta = tmp_path / "reglas.json"
+    ruta.write_text('{"reglas": []}', encoding="utf-8")
+    gestor = GestorReglas(ruta)
+    gestor.añadir(
+        patron="mercadona",
+        tipo="contains",
+        campos={"categoria1": "Alimentación", "categoria2": "Supermercados", "categoria3": "",
+                "entidad": "", "proveedor": "Mercadona", "tipo_gasto": "Optimizable"},
+        cuenta="Cuenta Nomina",
+    )
+    assert gestor.buscar_match("mercadona vitoria", cuenta="Cuenta Nomina") is not None
+    assert gestor.buscar_match("mercadona vitoria", cuenta="Cuenta Ocio") is None
+
+    # Persiste en disco
+    gestor2 = GestorReglas(ruta)
+    regla = gestor2.listar()[0]
+    assert regla.get("cuenta") == "Cuenta Nomina"
+
+
 # --- Exportar / importar ---
 
 def test_exportar_e_importar_fusionar(gestor, tmp_path):
