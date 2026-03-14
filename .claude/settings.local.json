@@ -5,7 +5,10 @@
       "Bash(presupuesto config:*)",
       "Bash(presupuesto reglas:*)",
       "Bash(pip3 install:*)",
-      "Bash(presupuesto maestro:*)"
+      "Bash(presupuesto maestro:*)",
+      "Bash(presupuesto añadir:*)",
+      "Bash(pytest:*)",
+      "Bash(presupuesto vista:*)"
     ]
   }
 }

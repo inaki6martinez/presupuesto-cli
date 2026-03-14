@@ -7,6 +7,7 @@ Crea un backup automático antes de cualquier escritura.
 
 from __future__ import annotations
 
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -16,6 +17,64 @@ import openpyxl
 
 if TYPE_CHECKING:
     from presupuesto.categorizar import MovimientoCategorizado
+
+
+def leer_numero(valor) -> float | None:
+    """Convierte el valor de una celda xlsx a float.
+
+    Acepta:
+    - Números literales (int, float, Decimal).
+    - Fórmulas aritméticas simples como '=-106.25' o '=51.75+62.1'.
+    Devuelve None si el valor está vacío o no se puede interpretar.
+    """
+    import re as _re
+    if valor is None:
+        return None
+    if isinstance(valor, (int, float)):
+        return float(valor)
+    s = str(valor).strip()
+    if s.startswith("="):
+        s = s[1:].strip()
+    # Solo evaluar si es aritmética pura: dígitos, operadores y punto decimal
+    if _re.match(r'^[\d\s\.\+\-\*\/\(\)eE]+$', s):
+        try:
+            return float(eval(s, {"__builtins__": {}}))  # noqa: S307
+        except Exception:
+            pass
+    try:
+        return float(s)
+    except (ValueError, TypeError):
+        return None
+
+
+def detectar_formulas_cuenta(ws, primera_libre: int) -> tuple[str | None, str | None]:
+    """Detecta el patrón de fórmula de las columnas K (Banco) y L (Tipo cuenta).
+
+    Busca en las filas existentes la primera celda K o L que contenga una
+    fórmula (empieza por '='). Devuelve (formula_k, formula_l) con el patrón
+    tal como aparece en la hoja, o None si no hay fórmulas.
+    """
+    formula_k: str | None = None
+    formula_l: str | None = None
+    for row in range(2, primera_libre):
+        v_k = ws.cell(row, 11).value
+        v_l = ws.cell(row, 12).value
+        if formula_k is None and isinstance(v_k, str) and v_k.startswith("="):
+            formula_k = v_k
+        if formula_l is None and isinstance(v_l, str) and v_l.startswith("="):
+            formula_l = v_l
+        if formula_k and formula_l:
+            break
+    return formula_k, formula_l
+
+
+def adaptar_formula_fila(formula: str, fila: int) -> str:
+    """Reemplaza todas las referencias de fila en la fórmula por `fila`.
+
+    Ejemplo: '=VLOOKUP(J5,Claves!$A:$C,2,0)' con fila=10
+             → '=VLOOKUP(J10,Claves!$A:$C,2,0)'
+    """
+    return re.sub(r'\b([A-Z]+)(\d+)\b', lambda m: m.group(1) + str(fila), formula)
 
 
 class EscritorDatos:
@@ -71,6 +130,9 @@ class EscritorDatos:
                 primera_libre = r + 1
                 break
 
+        # Detectar fórmulas de K y L para replicarlas en filas nuevas
+        formula_k, formula_l = detectar_formulas_cuenta(ws, primera_libre)
+
         for i, m in enumerate(movimientos):
             fila = primera_libre + i
             ws.cell(fila,  1).value = m.año
@@ -83,8 +145,13 @@ class EscritorDatos:
             ws.cell(fila,  8).value = m.proveedor
             ws.cell(fila,  9).value = m.tipo_gasto
             ws.cell(fila, 10).value = m.cuenta
-            ws.cell(fila, 11).value = m.banco
-            ws.cell(fila, 12).value = m.tipo_cuenta
+            # K y L: replicar fórmula si existe, si no usar el valor calculado
+            ws.cell(fila, 11).value = (
+                adaptar_formula_fila(formula_k, fila) if formula_k else m.banco
+            )
+            ws.cell(fila, 12).value = (
+                adaptar_formula_fila(formula_l, fila) if formula_l else m.tipo_cuenta
+            )
             ws.cell(fila, 13).value = m.estado
 
         wb.save(str(self._ruta))

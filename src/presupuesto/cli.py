@@ -809,6 +809,222 @@ def reglas_listar(interactivo, filtro):
             marcadas.add(idx_original)
 
 
+@cmd_reglas.command("debug")
+@click.argument("archivo", type=click.Path(exists=True))
+@click.option("--banco", help="Forzar banco (n26, openbank, kutxabank, bbva, ing, abanca).")
+@click.option("--cuenta", help="Forzar cuenta destino.")
+def reglas_debug(archivo, banco, cuenta):
+    """Muestra qué regla categoriza cada movimiento de un extracto.
+
+    Útil para auditar las reglas actuales: indica si cada movimiento
+    fue categorizado por una regla, por similitud con el historial o si
+    quedó sin match.
+
+    Para los movimientos sin match muestra el concepto y la ruta al
+    fichero de reglas, y permite recargar y volver a evaluar sin
+    reiniciar el programa (tecla 'r' en el prompt).
+
+    Tras crear una regla en el editor externo pulsa 'r' para confirmar
+    que el concepto ahora hace match.
+    """
+    from rich import box
+    from rich.table import Table
+
+    from presupuesto.categorizar import Categorizador
+    from presupuesto.config import cargar_config
+    from presupuesto.maestro import DatosMaestros
+
+    ruta_xlsx = _obtener_ruta_xlsx()
+    if ruta_xlsx is None:
+        return
+
+    try:
+        datos_maestros = DatosMaestros(ruta_xlsx)
+    except Exception as e:
+        consola.print(f"[red]Error al leer el Maestro:[/red] {e}")
+        return
+
+    gestor = _crear_gestor_reglas()
+    config = cargar_config()
+
+    parser_banco = _obtener_parser_y_banco(archivo, banco)
+    if parser_banco is None:
+        return
+    parser_obj, banco_key = parser_banco
+
+    try:
+        movimientos_crudos = parser_obj.parsear(archivo)
+    except Exception as e:
+        consola.print(f"[red]Error al parsear:[/red] {e}")
+        return
+
+    if not movimientos_crudos:
+        consola.print("[yellow]No se encontraron movimientos en el archivo.[/yellow]")
+        return
+
+    cuenta_archivo = _determinar_cuenta(cuenta, banco_key, config, datos_maestros)
+    if not cuenta_archivo:
+        return
+
+    categorizador = Categorizador(datos_maestros, gestor)
+    categorizador.cargar_historial(ruta_xlsx)
+
+    # --- Categorizar todos los movimientos ---
+    resultados: list[tuple] = []
+    for mov in movimientos_crudos:
+        cat = categorizador.categorizar(mov, cuenta_archivo)
+        resultados.append((mov, cat))
+
+    # --- Tabla de resultados ---
+    _COLOR = {"alta": "green", "media": "yellow", "baja": "yellow", "ninguna": "red"}
+
+    tabla = Table(
+        title=f"Debug de reglas — {Path(archivo).name}  ({cuenta_archivo})",
+        box=box.SIMPLE_HEAD,
+        show_lines=False,
+        padding=(0, 1),
+    )
+    tabla.add_column("Concepto", no_wrap=False, max_width=48)
+    tabla.add_column("Importe", justify="right", no_wrap=True)
+    tabla.add_column("Fuente", no_wrap=True)
+    tabla.add_column("Cat1", no_wrap=True)
+    tabla.add_column("Cat2", no_wrap=True)
+    tabla.add_column("Conf.", no_wrap=True)
+
+    for mov, cat in resultados:
+        c = _COLOR.get(cat.confianza, "")
+        tabla.add_row(
+            mov.concepto[:48],
+            f"{mov.importe:+.2f}€",
+            f"[{c}]{cat.fuente}[/{c}]",
+            cat.categoria1 or "[dim]—[/dim]",
+            cat.categoria2 or "[dim]—[/dim]",
+            f"[{c}]{cat.confianza}[/{c}]",
+        )
+
+    consola.print()
+    consola.print(tabla)
+
+    n_regla   = sum(1 for _, c in resultados if c.confianza == "alta")
+    n_hist    = sum(1 for _, c in resultados if c.confianza in ("media", "baja"))
+    n_ninguna = sum(1 for _, c in resultados if c.confianza == "ninguna")
+    consola.print(
+        f"  [green]{n_regla} con regla[/green]  "
+        f"[yellow]{n_hist} con historial[/yellow]  "
+        f"[red]{n_ninguna} sin match[/red]"
+    )
+
+    # --- Flujo interactivo para todos los movimientos ---
+    consola.print(
+        f"\n[bold]Revisión interactiva ({len(resultados)} movimientos):[/bold]  "
+        f"[dim]r[/dim]=recargar y re-evaluar  "
+        f"[dim]s[/dim]=siguiente  "
+        f"[dim]q[/dim]=salir\n"
+    )
+    consola.print(f"  Reglas en: [bold]{gestor.ruta}[/bold]\n")
+
+    from presupuesto.reglas import describir_match as _describir_match
+
+    def _fmt_coincide(info: dict) -> str:
+        coincide = info["coincide"]
+        if isinstance(coincide, list):
+            return "  +  ".join(f'[bold]"{x}"[/bold]' for x in coincide)
+        return f'[bold]"{coincide}"[/bold]'
+
+    def _mostrar_todas_matches(concepto: str, cuenta: str) -> None:
+        """Muestra la regla que aplica y las demás que también coinciden."""
+        todas = gestor.buscar_todas_con_match(concepto, cuenta=cuenta)
+        if not todas:
+            consola.print("    [red]Sin match.[/red]")
+            return
+        for i, regla in enumerate(todas):
+            info = _describir_match(regla, concepto)
+            if info is None:
+                continue
+            campos = regla["campos"]
+            if i == 0:
+                consola.print(
+                    f"    [green]▶ aplica:[/green]  "
+                    f"[cyan]{regla['patron']}[/cyan]  [dim]({regla['tipo']})[/dim]"
+                    + (f"  [dim][cuenta: {regla['cuenta']}][/dim]" if regla.get("cuenta") else "")
+                )
+                consola.print(f"      [dim]busca:[/dim]    {info['busca']}")
+                consola.print(f"      [dim]encontró:[/dim] {_fmt_coincide(info)}")
+                consola.print(
+                    f"      [dim]resultado:[/dim] [green]"
+                    f"{campos.get('categoria1','')} / {campos.get('categoria2','')}"
+                    f" · {campos.get('tipo_gasto','')}[/green]"
+                )
+            else:
+                consola.print(
+                    f"\n    [yellow bold]⚠ también coincide #{i}:[/yellow bold]  "
+                    f"[yellow]{regla['patron']}[/yellow]  [dim]({regla['tipo']})[/dim]"
+                    + (f"  [dim][cuenta: {regla['cuenta']}][/dim]" if regla.get("cuenta") else "")
+                )
+                consola.print(f"      [dim]busca:[/dim]    {info['busca']}")
+                consola.print(f"      [dim]encontró:[/dim] {_fmt_coincide(info)}")
+                consola.print(
+                    f"      [dim]resultado:[/dim] [yellow]"
+                    f"{campos.get('categoria1','')} / {campos.get('categoria2','')}"
+                    f" · {campos.get('tipo_gasto','')}[/yellow]"
+                )
+
+    def _mostrar_entrada(idx: int) -> None:
+        mov, cat = resultados[idx]
+        consola.rule(f"[dim]{idx + 1}/{len(resultados)}[/dim]")
+        c = _COLOR.get(cat.confianza, "")
+        bullet = {"alta": "[green]●[/green]", "media": "[yellow]●[/yellow]",
+                  "baja": "[yellow]●[/yellow]", "ninguna": "[red]●[/red]"}.get(cat.confianza, "●")
+        consola.print(
+            f"  {bullet} [bold]{mov.concepto}[/bold]"
+            f"  [dim]{mov.importe:+.2f}€[/dim]"
+        )
+        if mov.concepto_original and mov.concepto_original != mov.concepto:
+            consola.print(f"    [dim]original: {mov.concepto_original}[/dim]")
+        if cat.confianza == "alta":
+            _mostrar_todas_matches(mov.concepto, cuenta_archivo)
+        elif cat.confianza in ("media", "baja"):
+            consola.print(f"    [{c}]{cat.fuente}[/{c}]  → {cat.categoria1} / {cat.categoria2}")
+        else:
+            consola.print("    [red]sin match[/red]")
+        consola.print(
+            "  [dim]s[/dim] siguiente  "
+            "[dim]v[/dim] volver  "
+            "[dim]r[/dim] recargar  "
+            "[dim]q[/dim] salir"
+        )
+
+    idx = 0
+    while idx < len(resultados):
+        _mostrar_entrada(idx)
+        try:
+            accion = click.getchar()
+        except (EOFError, KeyboardInterrupt):
+            consola.print("\n[dim]Saliendo.[/dim]")
+            return
+
+        if accion in ("q", "\x03"):   # q o Ctrl-C
+            return
+        if accion == "s":
+            idx += 1
+        elif accion == "v":
+            if idx > 0:
+                idx -= 1
+            else:
+                consola.print("  [dim]Ya estás en el primero.[/dim]")
+        elif accion == "r":
+            n = gestor.recargar()
+            consola.print(f"  [dim]Reglas recargadas: {n} reglas.[/dim]")
+            # re-evaluar este movimiento con las reglas nuevas
+            mov, cat = resultados[idx]
+            from presupuesto.categorizar import Categorizador
+            cat2 = Categorizador(categorizador._maestros, gestor)
+            resultados[idx] = (mov, cat2.categorizar(mov, cuenta_archivo))
+            # no avanzar idx → volvemos a mostrar la entrada actualizada
+
+    consola.print()
+
+
 @cmd_reglas.command("exportar")
 @click.argument("archivo", type=click.Path())
 def reglas_exportar(archivo):
@@ -1275,3 +1491,15 @@ cli.add_command(cmd_maestro)
 
 from presupuesto.cmd_actualizar import cmd_actualizar  # noqa: E402
 cli.add_command(cmd_actualizar)
+
+from presupuesto.cmd_cerrar import cmd_cerrar  # noqa: E402
+cli.add_command(cmd_cerrar)
+
+from presupuesto.cmd_saldos import cmd_saldos  # noqa: E402
+cli.add_command(cmd_saldos)
+
+from presupuesto.cmd_añadir import cmd_añadir  # noqa: E402
+cli.add_command(cmd_añadir)
+
+from presupuesto.cmd_vista import cmd_vista  # noqa: E402
+cli.add_command(cmd_vista)

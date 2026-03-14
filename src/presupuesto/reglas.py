@@ -52,6 +52,59 @@ class Regla(_ReglaBase, total=False):
     cuenta: str  # opcional: limita la regla a una cuenta concreta
 
 
+def describir_match(regla: Regla, concepto: str) -> dict | None:
+    """Describe cómo una regla hace match con el concepto.
+
+    Devuelve None si no hay match, o un dict con:
+      - "busca":    descripción legible de lo que buscaba la regla.
+      - "coincide": texto o lista de textos que coincidieron en el concepto.
+    """
+    patron = regla["patron"]
+    tipo   = regla["tipo"]
+    concepto_lower = concepto.lower()
+
+    if tipo == "contains":
+        m = re.search(r"\b" + re.escape(patron.lower()) + r"\b", concepto_lower)
+        if not m:
+            return None
+        return {
+            "busca":    f'frase exacta "{patron}"',
+            "coincide": concepto[m.start():m.end()],
+        }
+
+    if tipo == "contains_all":
+        palabras = patron.lower().split()
+        encontradas = []
+        for p in palabras:
+            m = re.search(r"\b" + re.escape(p) + r"\b", concepto_lower)
+            if not m:
+                return None
+            encontradas.append(concepto[m.start():m.end()])
+        return {
+            "busca":    f'todas las palabras {palabras}',
+            "coincide": encontradas,
+        }
+
+    if tipo == "startswith":
+        if not concepto_lower.startswith(patron.lower()):
+            return None
+        return {
+            "busca":    f'empieza por "{patron}"',
+            "coincide": concepto[:len(patron)],
+        }
+
+    if tipo == "regex":
+        m = re.search(patron, concepto, re.IGNORECASE)
+        if not m:
+            return None
+        return {
+            "busca":    f'regex "{patron}"',
+            "coincide": m.group(0),
+        }
+
+    return None
+
+
 def _hace_match(regla: Regla, concepto: str) -> bool:
     """Comprueba si una regla hace match con el concepto (case-insensitive)."""
     patron = regla["patron"]
@@ -99,6 +152,21 @@ class GestorReglas:
             json.dump({"reglas": reglas}, f, ensure_ascii=False, indent=2)
 
     # --- Consulta ---
+
+    def buscar_regla_con_match(self, concepto: str, cuenta: str = "") -> "Regla | None":
+        """Devuelve la Regla completa (con tipo) de la primera que haga match, o None."""
+        todas = self.buscar_todas_con_match(concepto, cuenta)
+        return todas[0] if todas else None
+
+    def buscar_todas_con_match(self, concepto: str, cuenta: str = "") -> "list[Regla]":
+        """Devuelve todas las reglas que hacen match, en orden de prioridad.
+
+        Primero las específicas de `cuenta`, luego las genéricas. La primera
+        de la lista es la que realmente se aplica.
+        """
+        especificas = [r for r in self._reglas if r.get("cuenta", "") == cuenta and cuenta]
+        genericas   = [r for r in self._reglas if not r.get("cuenta", "")]
+        return [r for r in (*especificas, *genericas) if _hace_match(r, concepto)]
 
     def buscar_match(self, concepto: str, cuenta: str = "") -> CamposCategoria | None:
         """Devuelve los campos de la primera regla que haga match, o None."""
@@ -175,6 +243,11 @@ class GestorReglas:
             datos = json.load(f)
         self._reglas = datos.get("reglas", [])
         self._guardar_lista(self._reglas)
+        return len(self._reglas)
+
+    def recargar(self) -> int:
+        """Recarga las reglas desde disco. Devuelve el número de reglas cargadas."""
+        self._cargar()
         return len(self._reglas)
 
     def resetear(self) -> int:

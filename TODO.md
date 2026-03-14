@@ -42,7 +42,12 @@
 
 ## Fase 5: Mejoras
 
-- [ ] Cerrar mes y crear presupuesto años siguiente
-- [ ] Añadir campo cuenta a las reglas, para buscar primero por cuenta y afinar mas. Por ejemplo para la cuenta compra poder desglosar cuanto va a carniceria, fruteria...
-- [ ] Introducir valor en cuenta para crear entrada balance en la cuenta. Esto está pensado para fondos, EPSV, cuenta ocio, cuenta compra, etc.
+- [x] Cerrar mes y crear presupuesto años siguiente
+- [x] Añadir campo cuenta a las reglas, para buscar primero por cuenta y afinar mas. Por ejemplo para la cuenta compra poder desglosar cuanto va a carniceria, fruteria...
+- [x] Introducir valor en cuenta para crear entrada balance en la cuenta. Esto está pensado para fondos, EPSV, cuenta ocio, cuenta compra, etc.
+- [x] Con lo presupuestado y el saldo actual, sacar una tabla con el balance esperado para cada mes que esta presupuestado
+- [x] Añadir entrada en presupuesto. Que se pueda seleccionar multiples meses de lo ya presupuestado y añadir una nueva entrada con categorizacion y valor
+- [x] Comando para presupuesto año vista y año en curso
+- [x] Comand de vista que permita añadir una nueva entrada con categorización y valor (o duplicar usando lo de otro mes)
 - [ ] Hacer automatico el aumento en cuentas destino de ahorro colchon, jubilacion, fondos, etc.
+- [ ] Para las cuentas de fondos y jubilacion, el comando actulizar que meta el valor a actualizar como Finanzas - Intereses

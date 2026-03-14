@@ -42,7 +42,9 @@ def leer_balances(ruta_xlsx: str | Path) -> dict[str, Decimal]:
     if not ruta.exists():
         return balances
 
-    wb = openpyxl.load_workbook(str(ruta), data_only=True, read_only=True)
+    from presupuesto.escritor import leer_numero
+
+    wb = openpyxl.load_workbook(str(ruta), read_only=True)
     try:
         ws = wb["Datos"]
     except KeyError:
@@ -58,11 +60,10 @@ def leer_balances(ruta_xlsx: str | Path) -> dict[str, Decimal]:
         cuenta = str(row[9] or "").strip() if len(row) > 9 else ""
         if not cuenta:
             continue
-        try:
-            importe = Decimal(str(row[6] or 0))
-        except InvalidOperation:
+        imp = leer_numero(row[6])
+        if imp is None:
             continue
-        balances[cuenta] = balances.get(cuenta, Decimal(0)) + importe
+        balances[cuenta] = balances.get(cuenta, Decimal(0)) + Decimal(str(imp))
 
     wb.close()
     return balances

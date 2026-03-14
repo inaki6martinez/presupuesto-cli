@@ -295,10 +295,16 @@ def preguntar_guardar_regla(concepto: str, campos: dict, cuenta: str = "") -> di
         default="contains",
         show_choices=True,
     )
+    if cuenta:
+        consola.print(f"  [dim]Cuenta del movimiento: {cuenta}[/dim]")
     cuenta_regla = click.prompt(
-        "  Cuenta (vacío = aplica a todas)",
-        default=cuenta,
+        "  Cuenta (Enter = aplica a todas)",
+        default="",
+        show_default=False,
     ).strip()
+    if not cuenta_regla and cuenta:
+        if click.confirm(f"  ¿Limitar a [{cuenta}]?", default=True):
+            cuenta_regla = cuenta
     return {"patron": patron, "tipo": tipo, "campos": campos, "cuenta": cuenta_regla}
 
 
