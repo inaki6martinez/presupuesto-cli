@@ -54,7 +54,7 @@ class TUIRevisionDuplicados:
 
     def __init__(self, duplicados: list[tuple[MovimientoCategorizado, int]]) -> None:
         self._dups    = duplicados
-        self._excl: set[int] = set()   # índices en self._dups a excluir
+        self._excl: set[int] = set(range(len(duplicados)))  # todos marcados por defecto
         self._cursor  = 0
         self._accion  = "cancelar"
 
@@ -193,8 +193,8 @@ class TUIRevisionFinal:
         self._confirm_visible = False
         self._editar_idx = -1
 
-    def run(self) -> bool:
-        """Ejecuta el TUI. Devuelve True si el usuario confirma la escritura."""
+    def run(self) -> bool | str:
+        """Ejecuta el TUI. Devuelve True, False o 'volver' (para re-revisar duplicados)."""
         while True:
             self._accion = "loop"
             self._confirm_visible = False
@@ -211,8 +211,12 @@ class TUIRevisionFinal:
 
             if self._accion == "editar":
                 self._editar_movimiento(self._editar_idx)
+            elif self._accion == "dividir":
+                self._dividir_movimiento(self._editar_idx)
             elif self._accion == "confirmar":
                 return True
+            elif self._accion == "volver":
+                return "volver"
             else:
                 return False
 
@@ -226,6 +230,37 @@ class TUIRevisionFinal:
                 mov, **resultado,
                 confianza="alta", fuente="manual", requiere_confirmacion=False,
             )
+
+    def _dividir_movimiento(self, idx: int) -> None:
+        from presupuesto.tui_dividir import TUIDividir
+        from presupuesto.tui_categorizar import TUICategorizacion
+
+        mov = self._movs[idx]
+        partes = TUIDividir(mov).run()
+        if partes is None:
+            return
+
+        nuevos = []
+        for i, (importe, desc) in enumerate(partes):
+            mov_parte = dataclasses.replace(
+                mov,
+                importe=importe,
+                concepto_original=(
+                    (mov.concepto_original or "")
+                    + (f" [{desc}]" if desc else f" [parte {i + 1}]")
+                ),
+            )
+            tui = TUICategorizacion(mov_parte, self._maestros)
+            resultado = tui.run()
+            if isinstance(resultado, dict):
+                mov_parte = dataclasses.replace(
+                    mov_parte, **resultado,
+                    confianza="alta", fuente="manual", requiere_confirmacion=False,
+                )
+            nuevos.append(mov_parte)
+
+        self._movs[idx:idx + 1] = nuevos
+        self._cursor = min(self._cursor, len(self._movs) - 1)
 
     def _kb(self) -> KeyBindings:
         kb = KeyBindings()
@@ -244,6 +279,19 @@ class TUIRevisionFinal:
             else:
                 self._editar_idx = self._cursor
                 self._accion = "editar"
+                e.app.exit()
+
+        @kb.add("d")
+        def _(e):
+            if not self._confirm_visible:
+                self._editar_idx = self._cursor
+                self._accion = "dividir"
+                e.app.exit()
+
+        @kb.add("b")
+        def _(e):
+            if not self._confirm_visible:
+                self._accion = "volver"
                 e.app.exit()
 
         @kb.add("c")
@@ -285,7 +333,7 @@ class TUIRevisionFinal:
         # Cabecera de columnas
         t("class:dim", "    ")
         t("class:titulo", f"{'Fecha':<10}  {'Concepto':<35}  {'Importe':>10}  "
-          f"{'Cat. 1':<15}  {'Cat. 2':<15}  {'Proveedor':<15}  ")
+          f"{'Cat. 1':<15}  {'Cat. 2':<15}  {'Cat. 3':<15}  {'Proveedor':<15}  ")
         nl()
         t("class:dim", "─" * w)
         nl()
@@ -313,7 +361,7 @@ class TUIRevisionFinal:
             t(row_st if es_cur else grp_st, f"{grp_str} ")
             t(row_st, f"{m.mes:<3} {m.año}  {concepto:<35}  ")
             t(row_st if es_cur else imp_st, f"{imp_str:>10}  ")
-            t(row_st, f"{m.categoria1:<15}  {m.categoria2:<15}  {(m.proveedor or ''):<15}  ")
+            t(row_st, f"{m.categoria1:<15}  {m.categoria2:<15}  {(m.categoria3 or ''):<15}  {(m.proveedor or ''):<15}  ")
             t(row_st if es_cur else conf_st, icono)
             nl()
 
@@ -328,8 +376,8 @@ class TUIRevisionFinal:
                 t("class:fkey",   f" {k} ")
                 t("class:footer", f"{desc}  ")
         else:
-            for k, desc in [("↑↓", "Navegar"), ("Enter", "Editar seleccionado"),
-                             ("c", "Confirmar escritura"), ("Esc", "Cancelar")]:
+            for k, desc in [("↑↓", "Navegar"), ("Enter", "Editar"), ("d", "Dividir"),
+                             ("b", "Ver duplicados"), ("c", "Confirmar escritura"), ("Esc", "Cancelar")]:
                 t("class:fkey",   f" {k} ")
                 t("class:footer", f"{desc}  ")
 

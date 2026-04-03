@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from presupuesto.parsers.base import MovimientoCrudo
 
 RUTA_MARCADORES_DEFECTO = Path.home() / ".config" / "presupuesto" / "marcadores.json"
+RUTA_REVISIONES_DEFECTO = Path.home() / ".config" / "presupuesto" / "revisiones.json"
 
 _TOLERANCIA_IMPORTE = Decimal("0.01")
 
@@ -83,6 +84,44 @@ class GestorMarcadores:
         aceptados = [m for m in movimientos if m.fecha > fecha_corte]
         descartados = len(movimientos) - len(aceptados)
         return aceptados, descartados
+
+
+class GestorRevisiones:
+    """Gestiona revisiones.json: fecha en que el usuario revisó cada cuenta manualmente."""
+
+    def __init__(self, ruta: str | Path = RUTA_REVISIONES_DEFECTO):
+        self._ruta = Path(ruta)
+        self._datos: dict[str, str] = {}
+        self._cargar()
+
+    def _cargar(self) -> None:
+        if self._ruta.exists():
+            try:
+                self._datos = json.loads(self._ruta.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                self._datos = {}
+
+    def _guardar(self) -> None:
+        self._ruta.parent.mkdir(parents=True, exist_ok=True)
+        self._ruta.write_text(
+            json.dumps(self._datos, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+    def obtener_revision(self, cuenta: str) -> date | None:
+        """Devuelve la fecha de la última revisión manual de esta cuenta."""
+        valor = self._datos.get(cuenta)
+        if valor is None:
+            return None
+        try:
+            return date.fromisoformat(valor)
+        except ValueError:
+            return None
+
+    def registrar_revision(self, cuenta: str, fecha: date) -> None:
+        """Registra la fecha de revisión, sobrescribiendo siempre el valor anterior."""
+        self._datos[cuenta] = fecha.isoformat()
+        self._guardar()
 
 
 def detectar_duplicados(

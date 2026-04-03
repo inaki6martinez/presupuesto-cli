@@ -86,6 +86,7 @@ def _leer_datos_wb(
     modo_balance: bool = False,
     modo_gastos: bool = False,
     ajuste_vivienda: bool = False,
+    cuentas_filtro: set[str] | None = None,
 ) -> tuple[
     list[_FilaDisplay],
     list[int],
@@ -176,6 +177,8 @@ def _leer_datos_wb(
             cat3       = str(row[_COL_CAT3].value       or "").strip()
             entidad    = str(row[_COL_ENTIDAD].value    or "").strip()
             cuenta     = str(row[_COL_CUENTA].value     or "").strip()
+            if cuentas_filtro and cuenta not in cuentas_filtro:
+                continue
             tipo_gasto = str(row[_COL_TIPO_GASTO].value or "").strip()
             banco      = claves.get(cuenta, ("", ""))[0]
             fila_n     = row[_COL_AÑO].row
@@ -398,6 +401,7 @@ def _leer_datos(
     modo_balance: bool = False,
     modo_gastos: bool = False,
     ajuste_vivienda: bool = False,
+    cuentas_filtro: set[str] | None = None,
 ) -> tuple[
     list[_FilaDisplay],
     list[int],
@@ -409,7 +413,7 @@ def _leer_datos(
     wb = openpyxl.load_workbook(str(ruta_xlsx), read_only=True)
     try:
         return _leer_datos_wb(wb, meses_rango, incluir_balance, modo_balance, modo_gastos,
-                              ajuste_vivienda)
+                              ajuste_vivienda, cuentas_filtro)
     finally:
         wb.close()
 
@@ -539,6 +543,165 @@ def _fila_lines(filas: list[_FilaDisplay]) -> tuple[list[int], int]:
         pos.append(ln)
         ln += 2 if f.tipo == "subtotal" else 1
     return pos, ln
+
+
+# ---------------------------------------------------------------------------
+# TUI multi-selección de cuentas
+# ---------------------------------------------------------------------------
+
+def _tui_seleccionar_cuentas(cuentas: list[str]) -> set[str] | None:
+    """Multi-selección de cuentas. Devuelve el conjunto seleccionado o None si cancela."""
+    from prompt_toolkit import Application
+    from prompt_toolkit.application import get_app
+    from prompt_toolkit.formatted_text import FormattedText
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.layout import Layout
+    from prompt_toolkit.layout.containers import Window
+    from prompt_toolkit.layout.controls import FormattedTextControl
+    from prompt_toolkit.styles import Style
+
+    style = Style.from_dict({
+        "titulo":  "bold",
+        "cursor":  "reverse bold",
+        "selec":   "bold #00cc44",
+        "cur-sel": "reverse bold #00cc44",
+        "filtro":  "bold yellow",
+        "dim":     "#666666",
+        "footer":  "#666666",
+        "fkey":    "#aaaaaa bold",
+    })
+
+    state: dict = {"cursor": 0, "selec": set(), "filtro": "", "resultado": None}
+
+    def _filtradas() -> list[str]:
+        f = state["filtro"].lower()
+        return [c for c in cuentas if f in c.lower()] if f else list(cuentas)
+
+    def _clamp() -> None:
+        vis = _filtradas()
+        state["cursor"] = max(0, min(state["cursor"], len(vis) - 1))
+
+    def _render() -> FormattedText:
+        try:
+            size = get_app().output.get_size()
+            w, h = size.columns, size.rows
+        except Exception:
+            w, h = 80, 30
+
+        buf: list[tuple[str, str]] = []
+        def t(st, s): buf.append((st, s))
+        def nl():     buf.append(("", "\n"))
+
+        t("class:titulo", "  Filtrar por cuenta(s)")
+        nl()
+        filtro_txt = (state["filtro"] + "▌") if state["filtro"] else "▌"
+        t("class:dim",    "  Filtro: ")
+        t("class:filtro", filtro_txt)
+        t("class:dim", f"   {len(state['selec'])} seleccionada(s)")
+        nl()
+        t("class:dim", "─" * w)
+        nl()
+
+        vis      = _filtradas()
+        list_h   = max(3, h - 8)
+        cur      = state["cursor"]
+        ws_start = max(0, cur - list_h // 2)
+        ws_end   = min(len(vis), ws_start + list_h)
+        ws_start = max(0, ws_end - list_h)
+
+        for i in range(ws_start, ws_end):
+            c = vis[i]
+            es_cur = i == cur
+            es_sel = c in state["selec"]
+            marca  = "[✓]" if es_sel else "[ ]"
+            txt    = f"  {marca} {c}"
+
+            if es_cur and es_sel:
+                t("class:cur-sel", txt)
+            elif es_cur:
+                t("class:cursor",  txt)
+            elif es_sel:
+                t("class:selec",   txt)
+            else:
+                t("",              txt)
+            nl()
+
+        t("class:dim", "─" * w)
+        nl()
+        for k, desc in [("↑↓", "Navegar"), ("Spc", "Seleccionar"), ("a", "Todas"),
+                         ("^U", "Borrar filtro"), ("Enter", "Confirmar"), ("Esc", "Sin filtro")]:
+            t("class:fkey",   f" {k} ")
+            t("class:footer", f"{desc}  ")
+
+        return FormattedText(buf)
+
+    kb = KeyBindings()
+
+    @kb.add("up")
+    def _(e): state["cursor"] = max(0, state["cursor"] - 1)
+
+    @kb.add("down")
+    def _(e): state["cursor"] = min(max(0, len(_filtradas()) - 1), state["cursor"] + 1)
+
+    @kb.add("space")
+    def _(e):
+        vis = _filtradas()
+        if vis:
+            c = vis[state["cursor"]]
+            if c in state["selec"]:
+                state["selec"].discard(c)
+            else:
+                state["selec"].add(c)
+
+    @kb.add("a")
+    def _(e):
+        vis = _filtradas()
+        if state["selec"] >= set(vis):
+            state["selec"] -= set(vis)
+        else:
+            state["selec"] |= set(vis)
+
+    @kb.add("enter")
+    def _(e):
+        state["resultado"] = set(state["selec"]) or None
+        e.app.exit()
+
+    @kb.add("escape")
+    @kb.add("c-c")
+    def _(e):
+        state["resultado"] = "cancelar"
+        e.app.exit()
+
+    @kb.add("c-u")
+    def _(e):
+        state["filtro"] = ""
+        _clamp()
+
+    @kb.add("backspace")
+    @kb.add("c-h")
+    def _(e):
+        state["filtro"] = state["filtro"][:-1]
+        _clamp()
+
+    @kb.add("<any>")
+    def _(e):
+        key = e.key_sequence[0].key
+        if isinstance(key, str) and len(key) == 1 and key.isprintable():
+            state["filtro"] += key
+            state["cursor"] = 0
+
+    app = Application(
+        layout=Layout(Window(content=FormattedTextControl(text=_render, focusable=True))),
+        key_bindings=kb,
+        style=style,
+        full_screen=True,
+    )
+    app.run()
+
+    resultado = state["resultado"]
+    if resultado == "cancelar":
+        return None   # señal de cancelación total
+    return resultado  # set de cuentas o None (sin filtro)
 
 
 # ---------------------------------------------------------------------------
@@ -1590,6 +1753,159 @@ def _tui_vista(
 # Comando click
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Vista mensual (Presupuesto vs Real)
+# ---------------------------------------------------------------------------
+
+def _cmd_vista_mes(consola, ruta_origen: Path, mes_opt: str | None, año_opt: int | None) -> None:
+    """Muestra comparativa Presupuesto vs Real para un mes concreto."""
+    from datetime import date
+    from collections import defaultdict
+    from decimal import Decimal
+    from rich import box
+    from rich.table import Table
+    from rich.text import Text
+    from presupuesto.escritor import leer_numero
+    import openpyxl
+
+    hoy = date.today()
+    año = año_opt or hoy.year
+    if mes_opt:
+        mes_norm = mes_opt.strip().capitalize()
+        if mes_norm not in _MESES_ORD:
+            consola.print(f"[red]Mes inválido:[/red] '{mes_opt}'. Usa: {', '.join(_MESES_ORD)}")
+            return
+        mes = mes_norm
+    else:
+        mes = _MESES_ORD[hoy.month - 1]
+
+    consola.print(f"[dim]Leyendo datos para {mes} {año}…[/dim]")
+
+    wb = openpyxl.load_workbook(str(ruta_origen), data_only=True, read_only=True)
+    presupuesto: dict[tuple[str, str], Decimal] = defaultdict(Decimal)
+    real:        dict[tuple[str, str], Decimal] = defaultdict(Decimal)
+    orden: list[tuple[str, str]] = []
+    visto: set[tuple[str, str]] = set()
+
+    try:
+        ws = wb["Datos"]
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if not row or row[_COL_AÑO] is None:
+                continue
+            try:
+                fila_año = int(row[_COL_AÑO])
+            except (TypeError, ValueError):
+                continue
+            if fila_año != año or str(row[_COL_MES] or "").strip() != mes:
+                continue
+            estado = str(row[_COL_ESTADO] or "").strip()
+            if estado not in ("Presupuesto", "Real"):
+                continue
+            cat1 = str(row[_COL_CAT1] or "").strip()
+            cat2 = str(row[_COL_CAT2] or "").strip()
+            if not cat1:
+                continue
+            # Excluir Finanzas/Balance del total
+            if cat1.lower() == "finanzas" and cat2.lower() == "balance":
+                continue
+            imp_raw = leer_numero(row[_COL_IMPORTE])
+            if imp_raw is None:
+                continue
+            importe = Decimal(str(imp_raw))
+            key = (cat1, cat2)
+            if key not in visto:
+                orden.append(key)
+                visto.add(key)
+            if estado == "Presupuesto":
+                presupuesto[key] += importe
+            else:
+                real[key] += importe
+    finally:
+        wb.close()
+
+    if not orden:
+        consola.print(f"[yellow]No hay datos para {mes} {año}.[/yellow]")
+        return
+
+    # Agrupar por Cat1 manteniendo orden de aparición
+    grupos: dict[str, list[str]] = defaultdict(list)
+    orden_cat1: list[str] = []
+    visto_cat1: set[str] = set()
+    cat2_visto: set[tuple[str, str]] = set()
+    for cat1, cat2 in orden:
+        if cat1 not in visto_cat1:
+            orden_cat1.append(cat1)
+            visto_cat1.add(cat1)
+        if (cat1, cat2) not in cat2_visto:
+            grupos[cat1].append(cat2)
+            cat2_visto.add((cat1, cat2))
+
+    def _fmt(v: Decimal) -> Text:
+        if v == Decimal(0):
+            return Text("—", style="dim", justify="right")
+        return Text(f"{v:+.2f}€", style=("red" if v < 0 else "green"), justify="right")
+
+    def _fmt_dif(v: Decimal) -> Text:
+        if v == Decimal(0):
+            return Text("0.00€", style="dim", justify="right")
+        return Text(f"{v:+.2f}€", style=("green" if v > 0 else "red"), justify="right")
+
+    tabla = Table(
+        title=f"Presupuesto vs Real — {mes} {año}",
+        box=box.SIMPLE_HEAD, show_lines=False, padding=(0, 1),
+    )
+    tabla.add_column("Cat. 1",      style="bold", no_wrap=True, min_width=18)
+    tabla.add_column("Cat. 2",                    no_wrap=True, min_width=20)
+    tabla.add_column("Presupuesto", justify="right", no_wrap=True, min_width=13)
+    tabla.add_column("Real",        justify="right", no_wrap=True, min_width=13)
+    tabla.add_column("Diferencia",  justify="right", no_wrap=True, min_width=13)
+
+    total_pres = Decimal(0)
+    total_real = Decimal(0)
+
+    for cat1 in orden_cat1:
+        subtotal_pres = Decimal(0)
+        subtotal_real = Decimal(0)
+        primera = True
+
+        for cat2 in grupos[cat1]:
+            key = (cat1, cat2)
+            pres = presupuesto.get(key, Decimal(0))
+            re   = real.get(key, Decimal(0))
+            subtotal_pres += pres
+            subtotal_real += re
+            tabla.add_row(
+                cat1 if primera else "",
+                cat2 or "—",
+                _fmt(pres),
+                _fmt(re),
+                _fmt_dif(re - pres),
+            )
+            primera = False
+
+        sub_dif = subtotal_real - subtotal_pres
+        tabla.add_row(
+            "",
+            Text(f"  Σ {cat1}", style="dim italic"),
+            Text(f"{subtotal_pres:+.2f}€", style="dim", justify="right"),
+            Text(f"{subtotal_real:+.2f}€", style="dim", justify="right"),
+            _fmt_dif(sub_dif),
+            end_section=True,
+        )
+        total_pres += subtotal_pres
+        total_real += subtotal_real
+
+    tabla.add_row(
+        Text("TOTAL", style="bold"), "",
+        Text(f"{total_pres:+.2f}€", style="bold", justify="right"),
+        Text(f"{total_real:+.2f}€", style="bold", justify="right"),
+        _fmt_dif(total_real - total_pres),
+    )
+
+    consola.print()
+    consola.print(tabla)
+
+
 @click.command("vista")
 @click.option("--meses", default=12, show_default=True,
               help="Número de meses a mostrar (desde el actual).")
@@ -1603,8 +1919,15 @@ def _tui_vista(
               help="Agrupar por tipo de gasto (Fijos/Discrecionales/…) con Ahorro separado.")
 @click.option("--sin-ajuste", "sin_ajuste", is_flag=True, default=False,
               help="En --gastos, desactiva el ajuste de Vivienda compartida (÷2 y sin ocultar transferencia).")
+@click.option("--cuenta", "filtrar_cuenta", is_flag=True, default=False,
+              help="Abrir selector para filtrar por una o varias cuentas.")
+@click.option("--mes", "mes_opt", default=None, metavar="MES",
+              help="Ver comparativa Presupuesto vs Real de un mes (Ene, Feb, …). Por defecto: mes actual.")
+@click.option("--año", "año_opt", default=None, type=int, metavar="AÑO",
+              help="Año para --mes. Por defecto: año actual.")
 def cmd_vista(meses: int, filtro_cat1: str | None, incluir_balance: bool,
-              modo_balance: bool, modo_gastos: bool, sin_ajuste: bool):
+              modo_balance: bool, modo_gastos: bool, sin_ajuste: bool,
+              filtrar_cuenta: bool, mes_opt: str | None, año_opt: int | None):
     """Presupuesto a un año vista (TUI interactivo)."""
     import shutil
     import tempfile
@@ -1620,6 +1943,11 @@ def cmd_vista(meses: int, filtro_cat1: str | None, incluir_balance: bool,
     ruta_origen = Path(ruta_str).expanduser()
     if not ruta_origen.exists():
         consola.print(f"[red]No se encuentra:[/red] {ruta_origen}"); raise SystemExit(1)
+
+    # ── Modo mensual ──────────────────────────────────────────────────────────
+    if mes_opt is not None or año_opt is not None:
+        _cmd_vista_mes(consola, ruta_origen, mes_opt, año_opt)
+        return
 
     # Copiar xlsx a directorio temporal en filesystem local (evita latencia WSL→Windows)
     consola.print("[dim]Copiando xlsx a directorio temporal…[/dim]")
@@ -1638,9 +1966,38 @@ def cmd_vista(meses: int, filtro_cat1: str | None, incluir_balance: bool,
 
     ajuste_vivienda = modo_gastos and not sin_ajuste
 
+    # ── Filtro opcional por cuenta ────────────────────────────────────────────
+    cuentas_filtro: set[str] | None = None
+    if filtrar_cuenta:
+        import openpyxl as _opx
+        _wb_cl = _opx.load_workbook(str(ruta_xlsx), data_only=True, read_only=True)
+        try:
+            _cuentas_lista = []
+            for _row in _wb_cl["Claves"].iter_rows(min_row=2, values_only=True):
+                if _row and _row[0]:
+                    _cuentas_lista.append(str(_row[0]).strip())
+        except KeyError:
+            _cuentas_lista = []
+        finally:
+            _wb_cl.close()
+
+        if not _cuentas_lista:
+            consola.print("[yellow]No se encontraron cuentas en la hoja Claves.[/yellow]")
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            return
+
+        seleccion = _tui_seleccionar_cuentas(_cuentas_lista)
+        if seleccion == "cancelar":
+            # Esc → cancelar completamente
+            consola.print("[dim]Cancelado.[/dim]")
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            return
+        cuentas_filtro = seleccion  # None = sin filtro (Enter sin selección), set = filtrar
+
     consola.print("[dim]Leyendo datos del xlsx…[/dim]")
     filas, nav_indices, detalles, claves, opciones = _leer_datos(
-        ruta_xlsx, meses_rango, incluir_balance, modo_balance, modo_gastos, ajuste_vivienda)
+        ruta_xlsx, meses_rango, incluir_balance, modo_balance, modo_gastos,
+        ajuste_vivienda, cuentas_filtro)
 
     if not filas or not nav_indices:
         msg = ("No hay entradas de Finanzas/Balance para el rango seleccionado." if modo_balance else

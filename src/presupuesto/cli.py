@@ -212,7 +212,12 @@ def cmd_importar(archivos, banco, cuenta, dry_run, no_interactivo, verbose, desd
                 salir_solicitado = True
                 break
 
-            todos_aceptados.append((mov_crudo, resultado, cuenta_archivo))
+            if isinstance(resultado, list):
+                # Movimiento dividido: varias partes categorizadas
+                for cat_parte in resultado:
+                    todos_aceptados.append((mov_crudo, cat_parte, cuenta_archivo))
+            else:
+                todos_aceptados.append((mov_crudo, resultado, cuenta_archivo))
             idx += 1
 
     # --- Agrupar ---
@@ -250,26 +255,37 @@ def cmd_importar(archivos, banco, cuenta, dry_run, no_interactivo, verbose, desd
         _guardar_pendientes(pendientes)
         return
 
-    # --- Detectar duplicados (TUI) ---
+    # --- Detectar duplicados + revisión final (con opción de volver) ---
     from presupuesto.tui_revision import TUIRevisionDuplicados, TUIRevisionFinal
 
     duplicados = detectar_duplicados(agrupados, ruta_xlsx)
-    if duplicados:
-        tui_dups = TUIRevisionDuplicados(duplicados)
-        excluidos_idx = tui_dups.run()
-        if excluidos_idx:
+    agrupados_sin_dups = agrupados  # referencia inicial
+
+    while True:
+        # Pantalla de duplicados
+        if duplicados:
+            tui_dups = TUIRevisionDuplicados(duplicados)
+            excluidos_idx = tui_dups.run()
             excluir_ids = {id(duplicados[i][0]) for i in excluidos_idx}
-            agrupados = [m for m in agrupados if id(m) not in excluir_ids]
+            agrupados_sin_dups = [m for m in agrupados if id(m) not in excluir_ids]
+        else:
+            agrupados_sin_dups = agrupados
 
-    if not agrupados:
-        consola.print("[yellow]Todos los movimientos fueron excluidos.[/yellow]")
-        return
+        if not agrupados_sin_dups:
+            consola.print("[yellow]Todos los movimientos fueron excluidos.[/yellow]")
+            return
 
-    # --- Revisión final y confirmación (TUI) ---
-    tui_final = TUIRevisionFinal(agrupados, datos_maestros)
-    if not tui_final.run():
-        consola.print("[dim]Importación cancelada.[/dim]")
-        return
+        # Pantalla de revisión final
+        tui_final = TUIRevisionFinal(agrupados_sin_dups, datos_maestros)
+        resultado_final = tui_final.run()
+        if resultado_final == "volver":
+            continue   # volver a la pantalla de duplicados
+        if not resultado_final:
+            consola.print("[dim]Importación cancelada.[/dim]")
+            return
+        break  # confirmado
+
+    agrupados = agrupados_sin_dups
 
     if exportar:
         _exportar_csv(agrupados, todos_aceptados, exportar)
@@ -296,15 +312,21 @@ def cmd_importar(archivos, banco, cuenta, dry_run, no_interactivo, verbose, desd
     _RUTA_RECOVERY.unlink(missing_ok=True)   # limpiar recovery si existía
     consola.print(f"\n[green]✓ {n_escritos} fila(s) escritas en presupuesto.xlsx.[/green]")
 
-    # --- Actualizar marcadores ---
+    # --- Actualizar marcadores y revisiones ---
+    from presupuesto.duplicados import GestorRevisiones
+    gestor_revisiones = GestorRevisiones()
+    hoy = date.today()
+
     max_fechas: dict[str, date] = defaultdict(lambda: date.min)
     for mov_crudo, _, cuenta_m in todos_aceptados:
         if mov_crudo.fecha > max_fechas[cuenta_m]:
             max_fechas[cuenta_m] = mov_crudo.fecha
     for cuenta_m, fecha_m in max_fechas.items():
         gestor_marcadores.actualizar_marcador(cuenta_m, fecha_m)
+        gestor_revisiones.registrar_revision(cuenta_m, hoy)
         if verbose:
             consola.print(f"  [dim]Marcador actualizado: {cuenta_m} → {fecha_m}[/dim]")
+            consola.print(f"  [dim]Revisión registrada:  {cuenta_m} → {hoy}[/dim]")
 
     # --- Guardar pendientes si los hay ---
     if pendientes:
@@ -440,18 +462,59 @@ def _procesar_interactivo(
     """Flujo interactivo para un movimiento que requiere confirmación.
 
     Returns:
-        MovimientoCategorizado — aceptado/editado por el usuario.
-        "saltar"               — saltar este movimiento.
-        "salir"                — detener la importación.
+        MovimientoCategorizado        — aceptado/editado por el usuario.
+        list[MovimientoCategorizado]  — si el usuario dividió el movimiento.
+        "saltar"                      — saltar este movimiento.
+        "salir"                       — detener la importación.
+        "volver"                      — volver al movimiento anterior.
     """
     from presupuesto.interactivo import (
         mostrar_movimiento,
         pedir_categorizacion,
         preguntar_guardar_regla,
     )
+    from presupuesto.tui_dividir import TUIDividir
 
     consola.rule()
     mostrar_movimiento(mov_crudo, sugerencia)
+
+    # ── Ofrecer dividir ───────────────────────────────────────────────────────
+    if click.confirm("  ¿Dividir este movimiento?", default=False):
+        partes = TUIDividir(mov_crudo).run()
+        if partes is None:
+            consola.print("  [dim]División cancelada.[/dim]")
+        else:
+            cats: list = []
+            for i, (importe_parte, desc_parte) in enumerate(partes):
+                consola.print(
+                    f"\n  [bold]Parte {i + 1}/{len(partes)}[/bold]  "
+                    f"{'[red]' if importe_parte < 0 else '[green]'}"
+                    f"{importe_parte:+.2f}€"
+                    f"{'[/red]' if importe_parte < 0 else '[/green]'}"
+                    + (f"  {desc_parte}" if desc_parte else "")
+                )
+                sug_parte = dataclasses.replace(
+                    sugerencia,
+                    importe=importe_parte,
+                    concepto_original=(
+                        f"{mov_crudo.concepto_original or mov_crudo.concepto}"
+                        + (f" [{desc_parte}]" if desc_parte else f" [parte {i + 1}]")
+                    ),
+                )
+                resultado_parte = pedir_categorizacion(datos_maestros, sug_parte)
+                if resultado_parte in ("saltar", "salir", "volver"):
+                    return resultado_parte
+                cat_parte = dataclasses.replace(
+                    sug_parte,
+                    **resultado_parte,
+                    confianza="alta",
+                    fuente="manual",
+                    requiere_confirmacion=False,
+                )
+                cats.append(cat_parte)
+            return cats
+
+    # ── Flujo normal (sin división) ───────────────────────────────────────────
     resultado = pedir_categorizacion(datos_maestros, sugerencia)
 
     if resultado in ("saltar", "salir", "volver"):
@@ -1503,3 +1566,7 @@ cli.add_command(cmd_añadir)
 
 from presupuesto.cmd_vista import cmd_vista  # noqa: E402
 cli.add_command(cmd_vista)
+
+from presupuesto.cmd_estado import cmd_estado  # noqa: E402
+cli.add_command(cmd_estado)
+

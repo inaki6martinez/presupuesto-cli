@@ -244,6 +244,45 @@ def _tui_seleccionar_cuenta(
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _pedir_registrar_revision(consola, cuenta: str, gestor, hoy: date) -> None:
+    """Ofrece al usuario confirmar y/o cambiar la fecha de revisión de la cuenta."""
+    revision_actual = gestor.obtener_revision(cuenta)
+
+    consola.print()
+    if revision_actual:
+        consola.print(
+            f"  Última revisión de [bold]{cuenta}[/bold]: "
+            f"[cyan]{revision_actual.isoformat()}[/cyan]"
+        )
+    else:
+        consola.print(
+            f"  [dim]Sin revisión registrada para [bold]{cuenta}[/bold][/dim]"
+        )
+
+    if not click.confirm(f"  ¿Registrar revisión de '{cuenta}'?", default=True):
+        return
+
+    while True:
+        raw = click.prompt(
+            "  Fecha de la revisión",
+            default=hoy.isoformat(),
+        ).strip()
+        try:
+            fecha = date.fromisoformat(raw)
+            break
+        except ValueError:
+            consola.print("  [red]Formato inválido. Usa YYYY-MM-DD (ej: 2026-03-31)[/red]")
+
+    gestor.registrar_revision(cuenta, fecha)
+    consola.print(
+        f"  [green]✓ Revisión de '{cuenta}' registrada: {fecha.isoformat()}[/green]"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Comando click
 # ---------------------------------------------------------------------------
 
@@ -276,9 +315,8 @@ def cmd_actualizar():
         raise SystemExit(1)
 
     from presupuesto.categorizar import MovimientoCategorizado
-    from presupuesto.duplicados import GestorMarcadores
-    ruta_marcadores = Path("~/.config/presupuesto/marcadores.json").expanduser()
-    gestor_marcadores = GestorMarcadores(ruta_marcadores)
+    from presupuesto.duplicados import GestorRevisiones
+    gestor_revisiones = GestorRevisiones()
 
     # --- Bucle: TUI → actualizar → volver a TUI ---
     while True:
@@ -308,12 +346,13 @@ def cmd_actualizar():
         color_dif = "green" if diferencia >= 0 else "red"
         consola.print(f"  Diferencia:     [{color_dif}]{diferencia:+.2f}€[/{color_dif}]")
 
-        if diferencia == 0:
-            consola.print("\n  [yellow]Diferencia 0, no hay nada que ajustar.[/yellow]")
-            continue
-
         hoy = date.today()
         mes = _MESES[hoy.month - 1]
+
+        if diferencia == 0:
+            consola.print("\n  [yellow]Diferencia 0, no hay nada que ajustar.[/yellow]")
+            _pedir_registrar_revision(consola, cuenta, gestor_revisiones, hoy)
+            continue
 
         consola.print(f"\n  Se escribirá:  {hoy.year} {mes}  Finanzas / Balance  "
                       f"{diferencia:+.2f}€  {cuenta}")
@@ -350,7 +389,6 @@ def cmd_actualizar():
             consola.print(f"  [red]Error al escribir:[/red] {e}")
             continue
 
-        # Actualizar marcador y balance local para la próxima iteración
-        gestor_marcadores.actualizar_marcador(cuenta, hoy)
-        consola.print(f"  [dim]Marcador actualizado: {cuenta} → {hoy}[/dim]")
+        # Registrar revisión (interactivo) y actualizar balance local
+        _pedir_registrar_revision(consola, cuenta, gestor_revisiones, hoy)
         balances[cuenta] = nuevo_valor

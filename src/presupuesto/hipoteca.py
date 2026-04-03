@@ -44,10 +44,17 @@ def es_cuota_hipoteca(mov: MovimientoCategorizado) -> bool:
 
 
 def buscar_cuota(año: int, mes_abr: str, ruta_xlsx: str | Path) -> tuple[Decimal, Decimal] | None:
-    """Busca (intereses, amortización) en 'Cuadro hipteca' para el año/mes dado.
+    """Devuelve (intereses, amortización) para el año/mes dado.
+
+    Primero intenta leer los valores de las celdas de la hoja (si no son None/0).
+    Si son None (fórmulas sin caché), calcula desde los parámetros estáticos:
+      - Fila 2 col B: Capital inicial
+      - Fila 3 col B: Tasa anual
+      - Fila 4 col B: Plazo en meses
+      - Fila 7 col A: Fecha del primer pago
 
     mes_abr es la abreviatura española de 3 letras (Ene, Feb, …, Dic).
-    Devuelve None si no se encuentra la fila correspondiente.
+    Devuelve None si no se encuentra la hoja o la fecha no pertenece al cuadro.
     """
     import openpyxl
 
@@ -69,25 +76,100 @@ def buscar_cuota(año: int, mes_abr: str, ruta_xlsx: str | Path) -> tuple[Decima
             wb.close()
             return None
         ws = wb[_HOJA]
+
+        # Leer parámetros estáticos (filas 2-4, col B = índice 1)
+        filas_param = list(ws.iter_rows(min_row=2, max_row=4, values_only=True))
+        capital_inicial = filas_param[0][1] if filas_param[0][1] else None
+        tasa_anual      = filas_param[1][1] if filas_param[1][1] else None
+        plazo_meses     = filas_param[2][1] if filas_param[2][1] else None
+
+        # Buscar la fila del mes solicitado y leer valores o número de cuota
+        fecha_primer_pago = None
+        intereses_celda   = None
+        amortiz_celda     = None
+        num_cuota         = None
+
         for row in ws.iter_rows(min_row=7, values_only=True):
             fecha_val = row[_COL_FECHA - 1]
             if fecha_val is None:
                 continue
-            # Puede ser datetime o date
             try:
                 fila_año = fecha_val.year
                 fila_mes = fecha_val.month
             except AttributeError:
                 continue
+            if fecha_primer_pago is None:
+                fecha_primer_pago = fecha_val
             if fila_año == año and fila_mes == mes_num:
-                intereses    = Decimal(str(row[_COL_INTERESES    - 1] or 0)).quantize(Decimal("0.01"))
-                amortizacion = Decimal(str(row[_COL_AMORTIZACION - 1] or 0)).quantize(Decimal("0.01"))
-                wb.close()
-                return intereses, amortizacion
+                intereses_celda = row[_COL_INTERESES    - 1]
+                amortiz_celda   = row[_COL_AMORTIZACION - 1]
+                # Número de cuota = diferencia de meses desde el primer pago + 1
+                meses_desde = (
+                    (año - fecha_primer_pago.year) * 12
+                    + (mes_num - fecha_primer_pago.month)
+                )
+                num_cuota = meses_desde + 1
+                break
+
         wb.close()
+
+        if num_cuota is None:
+            return None  # el mes no está en el cuadro
+
+        # Usar valores de celda si están disponibles y son positivos
+        if intereses_celda and amortiz_celda:
+            return (
+                Decimal(str(intereses_celda)).quantize(Decimal("0.01")),
+                Decimal(str(amortiz_celda)).quantize(Decimal("0.01")),
+            )
+
+        # Fallback: calcular desde parámetros estáticos
+        if not (capital_inicial and tasa_anual and plazo_meses and num_cuota >= 1):
+            return None
+
+        return _calcular_cuota_anualidad(
+            float(capital_inicial), float(tasa_anual),
+            int(plazo_meses), num_cuota,
+        )
+
     except Exception:
-        pass
-    return None
+        return None
+
+
+def _calcular_cuota_anualidad(
+    capital: float,
+    tasa_anual: float,
+    plazo: int,
+    num_cuota: int,
+) -> tuple[Decimal, Decimal] | None:
+    """Calcula (intereses, amortización) para la cuota num_cuota de una hipoteca de anualidad fija.
+
+    Fórmula estándar de préstamo francés (cuota constante):
+        r  = tasa_anual / 12
+        C  = capital * r / (1 - (1+r)^(-plazo))
+        capital_pendiente(k) = capital*(1+r)^k - C*((1+r)^k - 1)/r
+        intereses(k+1) = capital_pendiente(k) * r
+        amortización(k+1) = C - intereses(k+1)
+    """
+    if num_cuota < 1 or num_cuota > plazo:
+        return None
+
+    r = tasa_anual / 12
+    if r == 0:
+        cuota = capital / plazo
+        intereses    = 0.0
+        amortizacion = cuota
+    else:
+        cuota = capital * r / (1 - (1 + r) ** (-plazo))
+        k = num_cuota - 1   # cuotas ya pagadas antes de esta
+        cap_pendiente = capital * (1 + r) ** k - cuota * ((1 + r) ** k - 1) / r
+        intereses    = cap_pendiente * r
+        amortizacion = cuota - intereses
+
+    return (
+        Decimal(str(round(intereses,    2))).quantize(Decimal("0.01")),
+        Decimal(str(round(amortizacion, 2))).quantize(Decimal("0.01")),
+    )
 
 
 def expandir_hipoteca(
