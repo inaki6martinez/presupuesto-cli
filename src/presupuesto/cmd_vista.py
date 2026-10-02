@@ -27,6 +27,7 @@ _COL_CAT2       = 3
 _COL_CAT3       = 4
 _COL_ENTIDAD    = 5
 _COL_IMPORTE    = 6
+_COL_PROVEEDOR  = 7
 _COL_TIPO_GASTO = 8
 _COL_CUENTA     = 9
 _COL_ESTADO     = 12
@@ -1757,7 +1758,13 @@ def _tui_vista(
 # Vista mensual (Presupuesto vs Real)
 # ---------------------------------------------------------------------------
 
-def _cmd_vista_mes(consola, ruta_origen: Path, mes_opt: str | None, año_opt: int | None) -> None:
+def _cmd_vista_mes(
+    consola,
+    ruta_origen: Path,
+    mes_opt: str | None,
+    año_opt: int | None,
+    detalle: bool = False,
+) -> None:
     """Muestra comparativa Presupuesto vs Real para un mes concreto."""
     from datetime import date
     from collections import defaultdict
@@ -1782,10 +1789,17 @@ def _cmd_vista_mes(consola, ruta_origen: Path, mes_opt: str | None, año_opt: in
     consola.print(f"[dim]Leyendo datos para {mes} {año}…[/dim]")
 
     wb = openpyxl.load_workbook(str(ruta_origen), data_only=True, read_only=True)
+
+    # Estructura compartida: agregados por (cat1, cat2)
     presupuesto: dict[tuple[str, str], Decimal] = defaultdict(Decimal)
     real:        dict[tuple[str, str], Decimal] = defaultdict(Decimal)
     orden: list[tuple[str, str]] = []
     visto: set[tuple[str, str]] = set()
+
+    # Estructura de detalle: lista de movimientos individuales
+    # cada elemento: (cat1, cat2, cat3, proveedor, entidad, importe, estado)
+    MovDet = tuple  # (cat1, cat2, cat3, proveedor, entidad, importe, estado)
+    detalle_movs: list[MovDet] = []
 
     try:
         ws = wb["Datos"]
@@ -1820,6 +1834,12 @@ def _cmd_vista_mes(consola, ruta_origen: Path, mes_opt: str | None, año_opt: in
                 presupuesto[key] += importe
             else:
                 real[key] += importe
+
+            if detalle:
+                cat3      = str(row[_COL_CAT3]      or "").strip()
+                proveedor = str(row[_COL_PROVEEDOR]  or "").strip()
+                entidad   = str(row[_COL_ENTIDAD]    or "").strip()
+                detalle_movs.append((cat1, cat2, cat3, proveedor, entidad, importe, estado))
     finally:
         wb.close()
 
@@ -1850,6 +1870,75 @@ def _cmd_vista_mes(consola, ruta_origen: Path, mes_opt: str | None, año_opt: in
             return Text("0.00€", style="dim", justify="right")
         return Text(f"{v:+.2f}€", style=("green" if v > 0 else "red"), justify="right")
 
+    # ── Vista de detalle ──────────────────────────────────────────────────────
+    if detalle:
+        tabla = Table(
+            title=f"Detalle — {mes} {año}",
+            box=box.SIMPLE_HEAD, show_lines=False, padding=(0, 1),
+        )
+        tabla.add_column("Cat. 1",    style="bold",  no_wrap=True, min_width=14)
+        tabla.add_column("Cat. 2",                   no_wrap=True, min_width=14)
+        tabla.add_column("Cat. 3",    style="dim",   no_wrap=True, min_width=10)
+        tabla.add_column("Proveedor",                no_wrap=False, min_width=22, max_width=32)
+        tabla.add_column("Entidad",   style="dim",   no_wrap=True, min_width=10)
+        tabla.add_column("Importe",   justify="right", no_wrap=True, min_width=12)
+        tabla.add_column("Est.",      no_wrap=True, min_width=5)
+
+        total_pres = Decimal(0)
+        total_real = Decimal(0)
+
+        for cat1 in orden_cat1:
+            subtotal_pres = Decimal(0)
+            subtotal_real = Decimal(0)
+            primera = True
+
+            # Movimientos de este cat1, manteniendo orden de aparición
+            movs_cat1 = [m for m in detalle_movs if m[0] == cat1]
+            for (_, cat2, cat3, proveedor, entidad, importe, estado) in movs_cat1:
+                if estado == "Presupuesto":
+                    subtotal_pres += importe
+                    imp_st = "dim"
+                    est_txt = Text("Pres.", style="dim")
+                else:
+                    subtotal_real += importe
+                    imp_st = "red" if importe < 0 else "green"
+                    est_txt = Text("Real", style="cyan")
+
+                tabla.add_row(
+                    cat1 if primera else "",
+                    cat2 or "—",
+                    cat3,
+                    proveedor or "—",
+                    entidad,
+                    Text(f"{importe:+.2f}€", style=imp_st, justify="right"),
+                    est_txt,
+                )
+                primera = False
+
+            sub_dif = subtotal_real - subtotal_pres
+            tabla.add_row(
+                "",
+                Text(f"  Σ {cat1}", style="dim italic"),
+                "", "",
+                Text(f"Pres: {subtotal_pres:+.2f}€", style="dim", justify="right"),
+                Text(f"Real: {subtotal_real:+.2f}€", style="dim", justify="right"),
+                _fmt_dif(sub_dif),
+                end_section=True,
+            )
+            total_pres += subtotal_pres
+            total_real += subtotal_real
+
+        tabla.add_row(
+            Text("TOTAL", style="bold"), "", "", "",
+            Text(f"Pres: {total_pres:+.2f}€", style="bold", justify="right"),
+            Text(f"Real: {total_real:+.2f}€", style="bold", justify="right"),
+            _fmt_dif(total_real - total_pres),
+        )
+        consola.print()
+        consola.print(tabla)
+        return
+
+    # ── Vista agregada (por defecto) ──────────────────────────────────────────
     tabla = Table(
         title=f"Presupuesto vs Real — {mes} {año}",
         box=box.SIMPLE_HEAD, show_lines=False, padding=(0, 1),
@@ -1925,9 +2014,12 @@ def _cmd_vista_mes(consola, ruta_origen: Path, mes_opt: str | None, año_opt: in
               help="Ver comparativa Presupuesto vs Real de un mes (Ene, Feb, …). Por defecto: mes actual.")
 @click.option("--año", "año_opt", default=None, type=int, metavar="AÑO",
               help="Año para --mes. Por defecto: año actual.")
+@click.option("--detalle", "detalle", is_flag=True, default=False,
+              help="Con --mes: muestra cada movimiento individual en vez de agrupar por Cat. 2.")
 def cmd_vista(meses: int, filtro_cat1: str | None, incluir_balance: bool,
               modo_balance: bool, modo_gastos: bool, sin_ajuste: bool,
-              filtrar_cuenta: bool, mes_opt: str | None, año_opt: int | None):
+              filtrar_cuenta: bool, mes_opt: str | None, año_opt: int | None,
+              detalle: bool):
     """Presupuesto a un año vista (TUI interactivo)."""
     import shutil
     import tempfile
@@ -1946,7 +2038,7 @@ def cmd_vista(meses: int, filtro_cat1: str | None, incluir_balance: bool,
 
     # ── Modo mensual ──────────────────────────────────────────────────────────
     if mes_opt is not None or año_opt is not None:
-        _cmd_vista_mes(consola, ruta_origen, mes_opt, año_opt)
+        _cmd_vista_mes(consola, ruta_origen, mes_opt, año_opt, detalle=detalle)
         return
 
     # Copiar xlsx a directorio temporal en filesystem local (evita latencia WSL→Windows)
