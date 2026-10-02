@@ -293,17 +293,20 @@ def cmd_importar(archivos, banco, cuenta, dry_run, no_interactivo, verbose, desd
     from presupuesto.tui_revision import TUIRevisionDuplicados, TUIRevisionFinal
 
     duplicados = detectar_duplicados(agrupados, ruta_xlsx)
-    agrupados_sin_dups = agrupados  # referencia inicial
+    agrupados_sin_dups = list(agrupados)  # copia mutable que TUIRevisionFinal puede modificar
+    excl_dups: set[int] | None = None     # None = primera visita (todos excluidos por defecto)
 
     while True:
         # Pantalla de duplicados
         if duplicados:
-            tui_dups = TUIRevisionDuplicados(duplicados)
+            tui_dups = TUIRevisionDuplicados(duplicados, excl_inicial=excl_dups)
             excluidos_idx = tui_dups.run()
+            excl_dups = set(excluidos_idx)   # persiste para la próxima vuelta con 'b'
             excluir_ids = {id(duplicados[i][0]) for i in excluidos_idx}
+            # Reconstruir desde agrupados_sin_dups (puede tener edits previos de TUIRevisionFinal)
+            # Solo excluimos los que siguen siendo duplicados marcados y coinciden por id
             agrupados_sin_dups = [m for m in agrupados if id(m) not in excluir_ids]
-        else:
-            agrupados_sin_dups = agrupados
+        # (si no hay duplicados, agrupados_sin_dups ya tiene el estado correcto de la iteración anterior)
 
         if not agrupados_sin_dups:
             consola.print("[yellow]Todos los movimientos fueron excluidos.[/yellow]")
@@ -313,13 +316,15 @@ def cmd_importar(archivos, banco, cuenta, dry_run, no_interactivo, verbose, desd
         tui_final = TUIRevisionFinal(agrupados_sin_dups, datos_maestros)
         resultado_final = tui_final.run()
         if resultado_final == "volver":
+            # Preservar los movimientos tal como los dejó TUIRevisionFinal (edits/divisiones)
+            agrupados_sin_dups = list(tui_final._movs)
             continue   # volver a la pantalla de duplicados
         if not resultado_final:
             consola.print("[dim]Importación cancelada.[/dim]")
             return
         break  # confirmado
 
-    agrupados = agrupados_sin_dups
+    agrupados = list(tui_final._movs)
 
     if exportar:
         _exportar_csv(agrupados, todos_aceptados, exportar)

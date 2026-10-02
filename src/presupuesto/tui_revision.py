@@ -52,11 +52,18 @@ _STYLE = Style.from_dict({
 class TUIRevisionDuplicados:
     """Muestra duplicados detectados y permite marcarlos para excluir."""
 
-    def __init__(self, duplicados: list[tuple[MovimientoCategorizado, int]]) -> None:
-        self._dups    = duplicados
-        self._excl: set[int] = set(range(len(duplicados)))  # todos marcados por defecto
-        self._cursor  = 0
-        self._accion  = "cancelar"
+    def __init__(
+        self,
+        duplicados: list[tuple[MovimientoCategorizado, int]],
+        excl_inicial: set[int] | None = None,
+    ) -> None:
+        self._dups   = duplicados
+        # Primera visita: todos marcados por defecto. Visitas posteriores: estado previo.
+        self._excl: set[int] = (
+            set(range(len(duplicados))) if excl_inicial is None else set(excl_inicial)
+        )
+        self._cursor = 0
+        self._accion = "cancelar"
 
     def run(self) -> set[int]:
         """Devuelve los índices de self._dups que el usuario quiere excluir.
