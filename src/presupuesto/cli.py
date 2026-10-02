@@ -138,7 +138,40 @@ def cmd_importar(archivos, banco, cuenta, dry_run, no_interactivo, verbose, desd
 
         consola.print(f"  [dim]{len(movimientos_crudos)} movimiento(s) a procesar.[/dim]")
 
-        # 5. Categorizar (con o sin interactividad)
+        # 5. Previsualización interactiva (excepto en dry-run/no-interactivo)
+        # El preview marca por defecto los movimientos que no tienen confianza alta:
+        # esos entran luego en revisión manual; el resto se auto-acepta.
+        siempre_interactivo = False   # True para movimientos marcados en el preview
+        if not dry_run and not no_interactivo:
+            from presupuesto.tui_preview import TUIPreviewImport
+            tui_prev = TUIPreviewImport(
+                movimientos_crudos,
+                cuenta_archivo,
+                categorizador,
+                gestor_reglas,
+                nombre_archivo=archivo_nombre,
+            )
+            preview_result = tui_prev.run()
+            if preview_result is None:
+                consola.print(f"  [dim]Importación cancelada para {archivo_nombre}.[/dim]")
+                continue
+
+            resultados_preview, marcados_para_revision = preview_result
+
+            # Auto-aceptar los no marcados usando la categorización del preview
+            for i, (mov_c, cat_c) in enumerate(resultados_preview):
+                if i not in marcados_para_revision:
+                    todos_aceptados.append((mov_c, cat_c, cuenta_archivo))
+
+            # Solo los marcados entran al bucle interactivo
+            movimientos_crudos = [resultados_preview[i][0] for i in sorted(marcados_para_revision)]
+            siempre_interactivo = bool(movimientos_crudos)
+
+            if not movimientos_crudos:
+                # Nada que revisar, todo auto-aceptado
+                continue
+
+        # 6. Categorizar (con o sin interactividad)
         # Usamos índice explícito para poder volver al movimiento anterior.
         # snapshots[i] = (len(todos_aceptados), len(pendientes)) justo antes de procesar i,
         # lo que permite deshacer el efecto de procesar i-1 al pedir "volver".
@@ -154,7 +187,7 @@ def cmd_importar(archivos, banco, cuenta, dry_run, no_interactivo, verbose, desd
 
             sugerencia = categorizador.categorizar(mov_crudo, cuenta_archivo)
 
-            if not sugerencia.requiere_confirmacion and not forzar_interactivo:
+            if not sugerencia.requiere_confirmacion and not forzar_interactivo and not siempre_interactivo:
                 # Capa 1 (alta confianza) → aceptar automáticamente
                 todos_aceptados.append((mov_crudo, sugerencia, cuenta_archivo))
                 if verbose:
@@ -188,7 +221,8 @@ def cmd_importar(archivos, banco, cuenta, dry_run, no_interactivo, verbose, desd
 
             # Flujo interactivo
             resultado = _procesar_interactivo(
-                mov_crudo, sugerencia, datos_maestros, gestor_reglas
+                mov_crudo, sugerencia, datos_maestros, gestor_reglas,
+                posicion=idx + 1, total=len(movimientos_crudos),
             )
 
             if resultado == "saltar":
@@ -458,6 +492,8 @@ def _procesar_interactivo(
     sugerencia,
     datos_maestros,
     gestor_reglas,
+    posicion: int = 1,
+    total: int = 1,
 ) -> object:
     """Flujo interactivo para un movimiento que requiere confirmación.
 
@@ -475,7 +511,7 @@ def _procesar_interactivo(
     )
     from presupuesto.tui_dividir import TUIDividir
 
-    consola.rule()
+    consola.rule(f"[dim]{posicion}/{total}[/dim]")
     mostrar_movimiento(mov_crudo, sugerencia)
 
     # ── Ofrecer dividir ───────────────────────────────────────────────────────
@@ -1569,4 +1605,3 @@ cli.add_command(cmd_vista)
 
 from presupuesto.cmd_estado import cmd_estado  # noqa: E402
 cli.add_command(cmd_estado)
-
