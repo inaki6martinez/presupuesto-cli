@@ -88,6 +88,7 @@ def _leer_datos_wb(
     modo_gastos: bool = False,
     ajuste_vivienda: bool = False,
     cuentas_filtro: set[str] | None = None,
+    estado_filtro: str = "Presupuesto",
 ) -> tuple[
     list[_FilaDisplay],
     list[int],
@@ -146,7 +147,7 @@ def _leer_datos_wb(
         for row in ws.iter_rows(min_row=2, values_only=False):
             if not row or row[_COL_AÑO].value is None:
                 continue
-            if str(row[_COL_ESTADO].value or "").strip() != "Presupuesto":
+            if str(row[_COL_ESTADO].value or "").strip() != estado_filtro:
                 continue
             cat1 = str(row[_COL_CAT1].value or "").strip()
             cat2 = str(row[_COL_CAT2].value or "").strip()
@@ -403,6 +404,7 @@ def _leer_datos(
     modo_gastos: bool = False,
     ajuste_vivienda: bool = False,
     cuentas_filtro: set[str] | None = None,
+    estado_filtro: str = "Presupuesto",
 ) -> tuple[
     list[_FilaDisplay],
     list[int],
@@ -414,7 +416,7 @@ def _leer_datos(
     wb = openpyxl.load_workbook(str(ruta_xlsx), read_only=True)
     try:
         return _leer_datos_wb(wb, meses_rango, incluir_balance, modo_balance, modo_gastos,
-                              ajuste_vivienda, cuentas_filtro)
+                              ajuste_vivienda, cuentas_filtro, estado_filtro)
     finally:
         wb.close()
 
@@ -722,6 +724,7 @@ def _tui_vista(
     modo_balance: bool = False,
     modo_gastos: bool = False,
     ajuste_vivienda: bool = False,
+    solo_lectura: bool = False,
 ) -> None:
 
     import openpyxl
@@ -1005,6 +1008,7 @@ def _tui_vista(
 
         titulo_main = (
             "  Balance de cuentas — Finanzas/Balance" if modo_balance else
+            "  Gastos reales — últimos meses"          if (modo_gastos and solo_lectura) else
             "  Presupuesto por tipo de gasto"          if modo_gastos  else
             "  Presupuesto — próximos 12 meses"
         )
@@ -1103,8 +1107,10 @@ def _tui_vista(
               "  * Vivienda ÷2 y Ahorro/Hipoteca ÷2 (gastos compartidos). "
               "Vivienda/Transferencia oculto. "
               "Usa --sin-ajuste para ver sin filtros."); nl()
-        for k, d in [("j/k","Mover"),("gg/G","Ini/Fin"),
-                     ("^d/^u","Med pág"),("Enter","Detalle"),("n","Nueva"),("q","Salir")]:
+        footer_keys = [("j/k","Mover"),("gg/G","Ini/Fin"),("^d/^u","Med pág"),("Enter","Detalle"),("q","Salir")]
+        if not solo_lectura:
+            footer_keys.insert(-1, ("n","Nueva"))
+        for k, d in footer_keys:
             t("class:fkey", f" {k} "); t("class:footer", f"{d}  ")
         if n_meses > n_vis:
             t("class:footer", f" │ {n_vis}/{n_meses} meses")
@@ -1172,8 +1178,12 @@ def _tui_vista(
           f"  [{offset+1}–{min(offset+list_h, len(entradas))} de {len(entradas)}]")
         nl()
         t("class:sep", "─" * w); nl()
-        for k, d in [("j/k","Mover"),("Esp","Selec"),("a","Todos"),
-                     ("Enter","Editar"),("d","Duplicar"),("x","Eliminar"),("q/Esc","Volver")]:
+        if solo_lectura:
+            detail_keys = [("j/k","Mover"),("q/Esc","Volver")]
+        else:
+            detail_keys = [("j/k","Mover"),("Esp","Selec"),("a","Todos"),
+                           ("Enter","Editar"),("d","Duplicar"),("x","Eliminar"),("q/Esc","Volver")]
+        for k, d in detail_keys:
             t("class:fkey", f" {k} "); t("class:footer", f"{d}  ")
         return buf
 
@@ -1520,7 +1530,8 @@ def _tui_vista(
     # n: nueva entrada desde main; cancela confirmación desde confirm
     @kb.add("n", filter=_only_main)
     def _nueva(e):
-        _abrir_nueva()
+        if not solo_lectura:
+            _abrir_nueva()
 
     @kb.add("n", filter=_only_confirm)
     def _confirm_no(e):
@@ -1529,10 +1540,13 @@ def _tui_vista(
     # d y x: solo en detail (no deben capturarse en input/picker)
     @kb.add("d", filter=_only_detail)
     def _duplicate(e):
-        _abrir_dup()
+        if not solo_lectura:
+            _abrir_dup()
 
     @kb.add("x", filter=_only_detail)
     def _delete(e):
+        if solo_lectura:
+            return
         ents    = _entradas()
         sel_set = state["d_selected"]
         if sel_set:
@@ -1548,6 +1562,8 @@ def _tui_vista(
     @kb.add("s", filter=_edit_or_confirm)
     @kb.add("y", filter=_edit_or_confirm)
     def _confirm_yes(e):
+        if solo_lectura:
+            return
         app = e.app
 
         # Nueva entrada en edit: pasar a selección de meses sin thread
@@ -1656,7 +1672,8 @@ def _tui_vista(
             fila = filas[nav_indices[state["cursor"]]]
             _abrir_detalle(fila.cat1, fila.cat2)
         elif v == "detail":
-            _abrir_edit()
+            if not solo_lectura:
+                _abrir_edit()
         elif v == "edit":
             _, _, usa_picker = _CAMPOS[state["e_cursor"]]
             if usa_picker:
@@ -1995,6 +2012,48 @@ def _cmd_vista_mes(
     consola.print(tabla)
 
 
+def _meses_con_real(
+    ruta_xlsx: Path,
+    n_meses: int,
+    año_filtro: int | None = None,
+) -> list[tuple[int, str]]:
+    """Devuelve meses que tienen al menos un movimiento Real, en orden cronológico.
+
+    Si año_filtro está definido, devuelve todos los meses de ese año con datos.
+    Si no, devuelve los N meses más recientes con datos de cualquier año.
+    """
+    import openpyxl
+
+    wb = openpyxl.load_workbook(str(ruta_xlsx), read_only=True, data_only=True)
+    meses_con_datos: set[tuple[int, str]] = set()
+    try:
+        ws = wb["Datos"]
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if not row or row[_COL_AÑO] is None:
+                continue
+            if str(row[_COL_ESTADO] or "").strip() != "Real":
+                continue
+            try:
+                año = int(row[_COL_AÑO])
+                mes = str(row[_COL_MES] or "").strip()
+            except (TypeError, ValueError):
+                continue
+            if mes not in _MESES_ORD:
+                continue
+            if año_filtro is not None and año != año_filtro:
+                continue
+            meses_con_datos.add((año, mes))
+    except KeyError:
+        pass
+    finally:
+        wb.close()
+
+    ordenados = sorted(meses_con_datos, key=lambda x: (x[0], _MESES_ORD.index(x[1])))
+    if año_filtro is not None:
+        return ordenados          # todos los meses del año con datos
+    return ordenados[-n_meses:]   # los N más recientes
+
+
 @click.command("vista")
 @click.option("--meses", default=12, show_default=True,
               help="Número de meses a mostrar (desde el actual).")
@@ -2013,13 +2072,15 @@ def _cmd_vista_mes(
 @click.option("--mes", "mes_opt", default=None, metavar="MES",
               help="Ver comparativa Presupuesto vs Real de un mes (Ene, Feb, …). Por defecto: mes actual.")
 @click.option("--año", "año_opt", default=None, type=int, metavar="AÑO",
-              help="Año para --mes. Por defecto: año actual.")
+              help="Con --mes: año del mes a mostrar. Con --real: filtra a ese año concreto.")
 @click.option("--detalle", "detalle", is_flag=True, default=False,
               help="Con --mes: muestra cada movimiento individual en vez de agrupar por Cat. 2.")
+@click.option("--real", "modo_real", is_flag=True, default=False,
+              help="Muestra gastos Reales de los últimos N meses (igual que --gastos pero histórico, solo lectura).")
 def cmd_vista(meses: int, filtro_cat1: str | None, incluir_balance: bool,
               modo_balance: bool, modo_gastos: bool, sin_ajuste: bool,
               filtrar_cuenta: bool, mes_opt: str | None, año_opt: int | None,
-              detalle: bool):
+              detalle: bool, modo_real: bool):
     """Presupuesto a un año vista (TUI interactivo)."""
     import shutil
     import tempfile
@@ -2036,8 +2097,8 @@ def cmd_vista(meses: int, filtro_cat1: str | None, incluir_balance: bool,
     if not ruta_origen.exists():
         consola.print(f"[red]No se encuentra:[/red] {ruta_origen}"); raise SystemExit(1)
 
-    # ── Modo mensual ──────────────────────────────────────────────────────────
-    if mes_opt is not None or año_opt is not None:
+    # ── Modo mensual (--mes y/o --año sin --real) ─────────────────────────────
+    if mes_opt is not None or (año_opt is not None and not modo_real):
         _cmd_vista_mes(consola, ruta_origen, mes_opt, año_opt, detalle=detalle)
         return
 
@@ -2049,12 +2110,22 @@ def cmd_vista(meses: int, filtro_cat1: str | None, incluir_balance: bool,
 
     hoy = date.today()
     meses_rango: list[tuple[int, str]] = []
-    a, m = hoy.year, hoy.month
-    for _ in range(meses):
-        meses_rango.append((a, _MESES_ORD[m - 1]))
-        m += 1
-        if m > 12:
-            m, a = 1, a + 1
+
+    if modo_real:
+        # Solo meses que tienen movimientos Real
+        modo_gastos = True   # --real implica --gastos
+        meses_rango = _meses_con_real(ruta_xlsx, meses, año_filtro=año_opt)
+        if not meses_rango:
+            consola.print("[yellow]No hay movimientos Reales en el xlsx.[/yellow]")
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            return
+    else:
+        a, m = hoy.year, hoy.month
+        for _ in range(meses):
+            meses_rango.append((a, _MESES_ORD[m - 1]))
+            m += 1
+            if m > 12:
+                m, a = 1, a + 1
 
     ajuste_vivienda = modo_gastos and not sin_ajuste
 
@@ -2087,9 +2158,10 @@ def cmd_vista(meses: int, filtro_cat1: str | None, incluir_balance: bool,
         cuentas_filtro = seleccion  # None = sin filtro (Enter sin selección), set = filtrar
 
     consola.print("[dim]Leyendo datos del xlsx…[/dim]")
+    estado_filtro = "Real" if modo_real else "Presupuesto"
     filas, nav_indices, detalles, claves, opciones = _leer_datos(
         ruta_xlsx, meses_rango, incluir_balance, modo_balance, modo_gastos,
-        ajuste_vivienda, cuentas_filtro)
+        ajuste_vivienda, cuentas_filtro, estado_filtro)
 
     if not filas or not nav_indices:
         msg = ("No hay entradas de Finanzas/Balance para el rango seleccionado." if modo_balance else
@@ -2111,6 +2183,6 @@ def cmd_vista(meses: int, filtro_cat1: str | None, incluir_balance: bool,
         _tui_vista(filas, nav_indices, meses_rango, detalles, ruta_xlsx, claves, opciones,
                    ruta_origen=ruta_origen, incluir_balance=incluir_balance,
                    modo_balance=modo_balance, modo_gastos=modo_gastos,
-                   ajuste_vivienda=ajuste_vivienda)
+                   ajuste_vivienda=ajuste_vivienda, solo_lectura=modo_real)
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
