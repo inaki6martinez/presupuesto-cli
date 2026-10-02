@@ -262,6 +262,10 @@ def cmd_importar(archivos, banco, cuenta, dry_run, no_interactivo, verbose, desd
     from presupuesto.hipoteca import expandir_hipotecas
     agrupados = expandir_hipotecas(agrupados, ruta_xlsx, datos_maestros)
 
+    # --- Añadir contrapartida de aportaciones a fondos ---
+    from presupuesto.fondos import expandir_fondos
+    agrupados = expandir_fondos(agrupados, datos_maestros)
+
     # --- Dry-run: resumen y salir ---
     if dry_run:
         mostrar_resumen(agrupados)
@@ -366,6 +370,20 @@ def cmd_importar(archivos, banco, cuenta, dry_run, no_interactivo, verbose, desd
         if verbose:
             consola.print(f"  [dim]Marcador actualizado: {cuenta_m} → {fecha_m}[/dim]")
             consola.print(f"  [dim]Revisión registrada:  {cuenta_m} → {hoy}[/dim]")
+
+    # Si se expandieron cuotas hipotecarias, registrar revisión de la cuenta Hipoteca Piso
+    from presupuesto.hipoteca import _CUENTA_HIPOTECA_PISO
+    if any(m.fuente == "hipoteca:balance" for m in agrupados):
+        gestor_revisiones.registrar_revision(_CUENTA_HIPOTECA_PISO, hoy)
+        if verbose:
+            consola.print(f"  [dim]Revisión registrada:  {_CUENTA_HIPOTECA_PISO} → {hoy}[/dim]")
+
+    # Si se añadió contrapartida de aportaciones a fondos, registrar revisión de la cuenta Fondos
+    from presupuesto.fondos import _CUENTA_FONDOS
+    if any(m.fuente == "fondos:balance" for m in agrupados):
+        gestor_revisiones.registrar_revision(_CUENTA_FONDOS, hoy)
+        if verbose:
+            consola.print(f"  [dim]Revisión registrada:  {_CUENTA_FONDOS} → {hoy}[/dim]")
 
     # --- Guardar pendientes si los hay ---
     if pendientes:
