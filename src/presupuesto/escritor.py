@@ -77,6 +77,23 @@ def adaptar_formula_fila(formula: str, fila: int) -> str:
     return re.sub(r'\b([A-Z]+)(\d+)\b', lambda m: m.group(1) + str(fila), formula)
 
 
+def eliminar_filas(ws, filas: list[int]) -> None:
+    """Borra filas y traslada las fórmulas de cuenta que openpyxl no ajusta."""
+    from bisect import bisect_left
+    from openpyxl.formula.translate import Translator
+
+    borradas = sorted(set(filas))
+    formulas = [(celda.row, celda.column, celda.coordinate, celda.value)
+                for row in ws.iter_rows(min_row=2, min_col=11, max_col=12)
+                for celda in row
+                if celda.row not in borradas and celda.data_type == "f"]
+    for fila in reversed(borradas):
+        ws.delete_rows(fila)
+    for fila, columna, origen, formula in formulas:
+        destino = ws.cell(fila - bisect_left(borradas, fila), columna)
+        destino.value = Translator(formula, origin=origen).translate_formula(destino.coordinate)
+
+
 class EscritorDatos:
     """Escribe filas en la hoja 'Datos' de presupuesto.xlsx."""
 

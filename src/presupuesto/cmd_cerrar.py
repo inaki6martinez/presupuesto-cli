@@ -53,7 +53,7 @@ def _analizar(ruta_xlsx: Path, cuenta: str = "") -> dict:
     """
     import openpyxl
 
-    wb = openpyxl.load_workbook(str(ruta_xlsx), data_only=True, read_only=True)
+    wb = openpyxl.load_workbook(str(ruta_xlsx), read_only=True)
     try:
         ws = wb["Datos"]
     except KeyError:
@@ -313,7 +313,7 @@ def _ejecutar(ruta_xlsx: Path, año_actual: int, plan: dict) -> tuple[int, int]:
     import openpyxl
     import shutil
     from datetime import datetime
-    from presupuesto.escritor import detectar_formulas_cuenta, adaptar_formula_fila
+    from presupuesto.escritor import detectar_formulas_cuenta, adaptar_formula_fila, eliminar_filas
 
     año_sig   = año_actual + 1
     crear_sig = plan["crear_sig"]
@@ -347,8 +347,7 @@ def _ejecutar(ruta_xlsx: Path, año_actual: int, plan: dict) -> tuple[int, int]:
             ws.cell(fila_num, _COL_TIPO_CUEN + 1).value = adaptar_formula_fila(formula_l, fila_num)
 
     # 1. Borrar filas Presupuesto del año actual (de abajo a arriba)
-    for r_idx in borrar:
-        ws.delete_rows(r_idx)
+    eliminar_filas(ws, borrar)
 
     # Re-detectar fórmulas después del borrado (las referencias ya se han ajustado)
     primera_fila_libre = ws.max_row + 1

@@ -141,7 +141,8 @@ def detectar_duplicados(
     if not ruta.exists():
         return []
 
-    wb = openpyxl.load_workbook(str(ruta), data_only=True, read_only=True)
+    from presupuesto.escritor import leer_numero
+    wb = openpyxl.load_workbook(str(ruta), read_only=True)
     try:
         ws = wb["Datos"]
     except KeyError:
@@ -161,7 +162,10 @@ def detectar_duplicados(
             mes_ex    = str(row[1] or "").strip()
             cat1_ex   = str(row[2] or "").strip()
             cat2_ex   = str(row[3] or "").strip()
-            imp_ex    = Decimal(str(row[6] or 0))
+            importe = leer_numero(row[6])
+            if importe is None:
+                continue
+            imp_ex    = Decimal(str(importe))
             cuenta_ex = str(row[9] or "").strip()
         except (ValueError, TypeError):
             continue

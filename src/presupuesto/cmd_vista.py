@@ -158,9 +158,7 @@ def _leer_datos_wb(
                     continue
             else:
                 # modo_gastos siempre excluye Finanzas/Balance
-                if es_balance:
-                    continue
-                if not incluir_balance and es_balance:
+                if es_balance and (modo_gastos or not incluir_balance):
                     continue
                 if not cat1:
                     continue
@@ -479,8 +477,8 @@ def _eliminar_entradas(
 ) -> None:
     """Elimina las filas indicadas de la hoja Datos en memoria (sin guardar a disco)."""
     ws = wb["Datos"]
-    for fila_n in sorted(filas_xlsx, reverse=True):
-        ws.delete_rows(fila_n, 1)
+    from presupuesto.escritor import eliminar_filas
+    eliminar_filas(ws, filas_xlsx)
 
 
 def _guardar_entradas(
@@ -1805,7 +1803,7 @@ def _cmd_vista_mes(
 
     consola.print(f"[dim]Leyendo datos para {mes} {año}…[/dim]")
 
-    wb = openpyxl.load_workbook(str(ruta_origen), data_only=True, read_only=True)
+    wb = openpyxl.load_workbook(str(ruta_origen), read_only=True)
 
     # Estructura compartida: agregados por (cat1, cat2)
     presupuesto: dict[tuple[str, str], Decimal] = defaultdict(Decimal)
