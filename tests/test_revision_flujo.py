@@ -29,6 +29,71 @@ def libro(ruta):
     wb.close()
 
 
+def test_vista_categoriza_seleccion_y_reintenta_guardado(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from presupuesto import cmd_vista as vista
+    from presupuesto.tui_categorizar import TUICategorizacion
+
+    ruta = tmp_path / "datos.xlsx"
+    libro(ruta)
+    wb = openpyxl.load_workbook(ruta)
+    ws = wb["Datos"]
+    ws.cell(2, 13, "Presupuesto")
+    ws.cell(2, 8, "Proveedor A")
+    ws.append([2026, "Sep", "Ocio", "Compra", "Otro", "Entidad", -20,
+               "Proveedor B", "Fijos", "Cuenta", "Banco", "Activo", "Presupuesto"])
+    wb.save(ruta)
+    wb.close()
+    datos = vista._leer_datos(ruta, [(2026, "Sep")])
+    filas, nav, detalles, claves, opciones = datos
+    sesiones = iter([["enter", "a", "enter", "down", "down", "down", "enter"],
+                     ["s", "s", "escape", "escape"]])
+    actual = []
+
+    class Aplicacion:
+        def __init__(self, **kwargs):
+            self.kb = kwargs["key_bindings"]
+            actual.append(self)
+
+        def run(self):
+            from prompt_toolkit.keys import KEY_ALIASES
+            self.resultado = None
+            for tecla in next(sesiones):
+                tecla = KEY_ALIASES.get(tecla, tecla)
+                bindings = self.kb.get_bindings_for_keys((tecla,))
+                binding = next(b for b in reversed(bindings) if b.keys == (tecla,) and b.filter())
+                binding.handler(SimpleNamespace(app=self))
+            return self.resultado
+
+        def exit(self, result=None):
+            self.resultado = result
+
+        def invalidate(self):
+            pass
+
+    monkeypatch.setattr("prompt_toolkit.Application", Aplicacion)
+    monkeypatch.setattr("prompt_toolkit.application.get_app", lambda: actual[-1])
+    monkeypatch.setattr(TUICategorizacion, "run", lambda self: {"categoria1": "Salud"})
+    guardar = vista._guardar_sesion
+    intentos = []
+
+    def guardar_con_fallo(*args):
+        intentos.append(True)
+        if len(intentos) == 1:
+            raise PermissionError("Archivo abierto")
+        guardar(*args)
+
+    monkeypatch.setattr(vista, "_guardar_sesion", guardar_con_fallo)
+    assert vista._tui_vista(filas, nav, [(2026, "Sep")], detalles, ruta, claves, opciones)
+    assert len(intentos) == 2
+    wb = openpyxl.load_workbook(ruta)
+    assert [wb["Datos"].cell(r, 3).value for r in (2, 3)] == ["Salud", "Salud"]
+    assert [wb["Datos"].cell(r, 8).value for r in (2, 3)] == ["Proveedor A", "Proveedor B"]
+    assert wb["Datos"].cell(3, 5).value == "Otro"
+    assert wb["Datos"].cell(3, 7).value == -20
+    wb.close()
+
+
 def test_division_cancelada_no_cambia_original(monkeypatch):
     from types import SimpleNamespace
     from presupuesto.tui_revision import TUIRevisionFinal

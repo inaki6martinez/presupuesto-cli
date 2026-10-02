@@ -192,6 +192,7 @@ class TUIRevisionFinal:
         self,
         movimientos: list[MovimientoCategorizado],
         maestros: DatosMaestros,
+        permitir_volver: bool = True,
     ) -> None:
         self._movs    = movimientos    # mutable; se edita in-place
         self._maestros = maestros
@@ -199,6 +200,7 @@ class TUIRevisionFinal:
         self._accion   = "loop"
         self._confirm_visible = False
         self._editar_idx = -1
+        self._permitir_volver = permitir_volver
 
     def run(self) -> bool | str:
         """Ejecuta el TUI. Devuelve True, False o 'volver' (para re-revisar duplicados)."""
@@ -280,7 +282,7 @@ class TUIRevisionFinal:
 
         @kb.add("b")
         def _(e):
-            if not self._confirm_visible:
+            if self._permitir_volver and not self._confirm_visible:
                 self._accion = "volver"
                 e.app.exit()
 
@@ -366,8 +368,11 @@ class TUIRevisionFinal:
                 t("class:fkey",   f" {k} ")
                 t("class:footer", f"{desc}  ")
         else:
-            for k, desc in [("↑↓", "Navegar"), ("Enter", "Editar"), ("d", "Dividir"),
-                             ("b", "Ver duplicados"), ("c", "Confirmar escritura"), ("Esc", "Cancelar")]:
+            acciones = [("↑↓", "Navegar"), ("Enter", "Editar"), ("d", "Dividir")]
+            if self._permitir_volver:
+                acciones.append(("b", "Ver duplicados"))
+            acciones.extend([("c", "Confirmar escritura"), ("Esc", "Cancelar")])
+            for k, desc in acciones:
                 t("class:fkey",   f" {k} ")
                 t("class:footer", f"{desc}  ")
 

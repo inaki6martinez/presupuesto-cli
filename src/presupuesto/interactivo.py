@@ -370,3 +370,40 @@ def pedir_confirmacion_escritura(num_movimientos: int) -> bool:
         "movimiento(s) en [bold]presupuesto.xlsx[/bold]."
     )
     return click.confirm("  ¿Continuar?", default=True)
+
+
+def pedir_registrar_revision(consola, cuenta: str, gestor, hoy: date) -> None:
+    """Ofrece al usuario confirmar y/o cambiar la fecha de revisión de la cuenta."""
+    from datetime import date
+    revision_actual = gestor.obtener_revision(cuenta)
+
+    consola.print()
+    if revision_actual:
+        consola.print(
+            f"  Última revisión de [bold]{cuenta}[/bold]: "
+            f"[cyan]{revision_actual.isoformat()}[/cyan]"
+        )
+    else:
+        consola.print(
+            f"  [dim]Sin revisión registrada para [bold]{cuenta}[/bold][/dim]"
+        )
+
+    if not click.confirm(f"  ¿Registrar revisión de '{cuenta}'?", default=True):
+        return
+
+    while True:
+        raw = click.prompt(
+            "  Fecha de la revisión",
+            default=hoy.isoformat(),
+        ).strip()
+        try:
+            fecha = date.fromisoformat(raw)
+            break
+        except ValueError:
+            consola.print("  [red]Formato inválido. Usa YYYY-MM-DD (ej: 2026-03-31)[/red]")
+
+    gestor.registrar_revision(cuenta, fecha)
+    consola.print(
+        f"  [green]✓ Revisión de '{cuenta}' registrada: {fecha.isoformat()}[/green]"
+    )
+

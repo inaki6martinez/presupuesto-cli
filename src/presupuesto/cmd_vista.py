@@ -43,6 +43,7 @@ _CAMPOS = [
     ("entidad",    "Entidad",    True),
     ("cuenta",     "Cuenta",     True),
     ("tipo_gasto", "Tipo gasto", True),
+    ("proveedor",  "Proveedor",  True),
 ]
 
 
@@ -63,6 +64,7 @@ class _Entrada:
     cuenta: str
     banco: str
     tipo_gasto: str = ""
+    proveedor: str = ""
 
 
 @dataclass
@@ -200,7 +202,7 @@ def _leer_datos_wb(
                 fila_xlsx=fila_n, año=año, mes=mes, importe=importe,
                 cat1=cat1, cat2=cat2, cat3=cat3,
                 entidad=entidad, cuenta=cuenta, banco=banco,
-                tipo_gasto=tipo_gasto,
+                tipo_gasto=tipo_gasto, proveedor=str(row[_COL_PROVEEDOR].value or "").strip(),
             ))
             if key not in visto:
                 orden_visto.append(key)
@@ -467,7 +469,7 @@ def _insertar_entrada(
     ws.cell(fila,  5).value = campos.get("cat3", "")
     ws.cell(fila,  6).value = campos.get("entidad", "")
     ws.cell(fila,  7).value = float(campos["importe"])
-    ws.cell(fila,  8).value = ""
+    ws.cell(fila,  8).value = campos.get("proveedor", "")
     ws.cell(fila,  9).value = campos.get("tipo_gasto", "")
     ws.cell(fila, 10).value = campos["cuenta"]
     ws.cell(fila, 11).value = (
@@ -507,6 +509,8 @@ def _guardar_entradas(
         ws.cell(fila_n, 5).value  = campos["cat3"]
         ws.cell(fila_n, 6).value  = campos["entidad"]
         ws.cell(fila_n, 7).value  = float(campos["importe"])
+        if "proveedor" in campos:
+            ws.cell(fila_n, 8).value = campos["proveedor"]
         ws.cell(fila_n, 9).value  = campos.get("tipo_gasto", "")
         ws.cell(fila_n, 10).value = campos["cuenta"]
 
@@ -717,6 +721,26 @@ def _tui_seleccionar_cuentas(cuentas: list[str]) -> set[str] | None:
 # TUI
 # ---------------------------------------------------------------------------
 
+_MAPA_CATEGORIZACION = {"cat1": "categoria1", "cat2": "categoria2", "cat3": "categoria3",
+                        "entidad": "entidad", "proveedor": "proveedor", "tipo_gasto": "tipo_gasto"}
+
+
+def _categorizar_campos(campos: dict, maestros) -> dict:
+    from presupuesto.categorizar import MovimientoCategorizado
+    from presupuesto.tui_categorizar import TUICategorizacion
+    banco, tipo = maestros.autocompletar_cuenta(campos.get("cuenta", ""))
+    mov = MovimientoCategorizado(
+        año=campos["año"], mes=campos["mes"], importe=campos["importe"],
+        cuenta=campos.get("cuenta", ""), banco=banco, tipo_cuenta=tipo,
+        **{destino: campos.get(origen, "") for origen, destino in _MAPA_CATEGORIZACION.items()})
+    resultado = TUICategorizacion(mov, maestros).run()
+    nuevos = dict(campos)
+    if isinstance(resultado, dict):
+        nuevos.update({origen: resultado[destino] for origen, destino in _MAPA_CATEGORIZACION.items()
+                       if destino in resultado})
+    return nuevos
+
+
 def _tui_vista(
     filas: list[_FilaDisplay],
     nav_indices: list[int],
@@ -731,7 +755,7 @@ def _tui_vista(
     modo_gastos: bool = False,
     ajuste_vivienda: bool = False,
     solo_lectura: bool = False,
-) -> None:
+) -> bool:
 
     import openpyxl
 
@@ -816,7 +840,6 @@ def _tui_vista(
 
     # ── filtros de vista para key bindings ───────────────────────────
     # Impiden que teclas de texto sean interceptadas en modos de edición
-    _no_input        = Condition(lambda: state["view"] != "input")
     _no_text         = Condition(lambda: state["view"] not in ("input", "picker"))
     _only_main       = Condition(lambda: state["view"] == "main")
     _only_detail     = Condition(lambda: state["view"] == "detail")
@@ -873,7 +896,7 @@ def _tui_vista(
             "año": e.año, "mes": e.mes, "importe": e.importe,
             "cat1": e.cat1, "cat2": e.cat2, "cat3": e.cat3,
             "entidad": e.entidad, "cuenta": e.cuenta,
-            "tipo_gasto": e.tipo_gasto,
+            "tipo_gasto": e.tipo_gasto, "proveedor": e.proveedor,
         }
         state.update(e_campos=campos, e_original=dict(campos),
                      e_fila=e.fila_xlsx, e_cursor=0, e_msg="",
@@ -888,7 +911,7 @@ def _tui_vista(
             "año": e.año, "mes": e.mes, "importe": e.importe,
             "cat1": e.cat1, "cat2": e.cat2, "cat3": e.cat3,
             "entidad": e.entidad, "cuenta": e.cuenta,
-            "tipo_gasto": e.tipo_gasto,
+            "tipo_gasto": e.tipo_gasto, "proveedor": e.proveedor,
         }
         state.update(dup_campos=campos, dup_cursor=0,
                      dup_selected=set(), view="dup_meses")
@@ -903,14 +926,14 @@ def _tui_vista(
             campos = {
                 "año": año_def, "mes": mes_def, "importe": Decimal("0"),
                 "cat1": "Finanzas", "cat2": "Balance",
-                "cat3": "", "entidad": "", "cuenta": cuenta_def, "tipo_gasto": "",
+                "cat3": "", "entidad": "", "cuenta": cuenta_def, "tipo_gasto": "", "proveedor": "",
             }
             e_cursor_def = 2   # Importe
         else:
             campos = {
                 "año": año_def, "mes": mes_def, "importe": Decimal("0"),
                 "cat1": "", "cat2": "", "cat3": "", "entidad": "", "cuenta": "",
-                "tipo_gasto": "",
+                "tipo_gasto": "", "proveedor": "",
             }
             e_cursor_def = 2
         state.update(e_campos=campos, e_original=dict(campos),
@@ -925,6 +948,12 @@ def _tui_vista(
 
     def _abrir_picker() -> None:
         campo = _CAMPOS[state["e_cursor"]][0]
+        if campo in _MAPA_CATEGORIZACION:
+            get_app().exit(result="categorizar")
+            return
+        if campo == "cuenta":
+            get_app().exit(result="cuenta")
+            return
         state.update(p_campo=campo,
                      p_options=list(opciones.get(campo, [])),
                      p_cursor=0, p_filter="", view="picker")
@@ -973,7 +1002,7 @@ def _tui_vista(
                     "año": e.año, "mes": e.mes, "importe": e.importe,
                     "cat1": e.cat1, "cat2": e.cat2, "cat3": e.cat3,
                     "entidad": e.entidad, "cuenta": e.cuenta,
-                    "tipo_gasto": e.tipo_gasto,
+                    "tipo_gasto": e.tipo_gasto, "proveedor": e.proveedor,
                 }
                 for k in mod:
                     campos[k] = state["e_campos"][k]
@@ -1430,7 +1459,7 @@ def _tui_vista(
     kb = KeyBindings()
 
     # j/k activos en todos los modos excepto input (donde deben escribirse)
-    @kb.add("j", filter=_no_input)
+    @kb.add("j", filter=_no_text)
     @kb.add("down")
     def _mv_down(e):
         v = state["view"]
@@ -1446,7 +1475,7 @@ def _tui_vista(
         elif v == "dup_meses":
             state["dup_cursor"] = min(len(meses_rango) - 1, state["dup_cursor"] + 1)
 
-    @kb.add("k", filter=_no_input)
+    @kb.add("k", filter=_no_text)
     @kb.add("up")
     def _mv_up(e):
         v = state["view"]
@@ -1498,7 +1527,7 @@ def _tui_vista(
         elif v == "dup_meses":
             state["dup_cursor"] = max(0, state["dup_cursor"] - half)
 
-    @kb.add("g", "g", filter=_no_input)
+    @kb.add("g", "g", filter=_no_text)
     def _go_top(e):
         v = state["view"]
         if v == "main":       state["cursor"]     = 0
@@ -1506,7 +1535,7 @@ def _tui_vista(
         elif v == "picker":   state["p_cursor"]   = 0
         elif v == "dup_meses": state["dup_cursor"] = 0
 
-    @kb.add("G", filter=_no_input)
+    @kb.add("G", filter=_no_text)
     def _go_bottom(e):
         v = state["view"]
         if v == "main":
@@ -1663,7 +1692,7 @@ def _tui_vista(
             state["dup_selected"] = all_idx
 
     @kb.add("enter")
-    @kb.add("l", filter=_no_input)   # l no se escribe en input, sí en picker (select)
+    @kb.add("l", filter=_no_text)   # l no se escribe en input, sí en picker (select)
     def _enter(e):
         v = state["view"]
         if v == "main" and nav_indices:
@@ -1757,7 +1786,18 @@ def _tui_vista(
         full_screen=True,
     )
     try:
-        app.run()
+        while True:
+            accion = app.run()
+            if accion == "categorizar":
+                from presupuesto.maestro import DatosMaestros
+                state["e_campos"] = _categorizar_campos(state["e_campos"], DatosMaestros(ruta_xlsx))
+            elif accion == "cuenta":
+                from presupuesto.tui_cuentas import seleccionar_cuenta
+                cuenta = seleccionar_cuenta([(c, b, t) for c, (b, t) in claves.items()])
+                if cuenta is not None:
+                    state["e_campos"]["cuenta"] = cuenta[0]
+            else:
+                break
         if state["sin_guardar"]:
             # Conserva el contenido incluso si también falló la copia local.
             from presupuesto.escritor import guardar_libro
