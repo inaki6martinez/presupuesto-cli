@@ -18,6 +18,7 @@ Navegación:
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from prompt_toolkit import Application
@@ -46,6 +47,24 @@ _STYLE = Style.from_dict({
     "footer":    "#666666",
     "fkey":      "#aaaaaa bold",
 })
+
+
+def categorizar_division(movimiento, partes, categorizar):
+    """Solo devuelve partes si todas se confirman y conservan el importe."""
+    if (not partes or len(partes) < 2
+            or any(not importe.is_finite() for importe, _ in partes)
+            or sum((importe for importe, _ in partes), Decimal("0")) != movimiento.importe):
+        return None
+    nuevos = []
+    for i, (importe, descripcion) in enumerate(partes, 1):
+        parte = replace(movimiento, importe=importe, concepto_original=(
+            (movimiento.concepto_original or "") + f" [{descripcion or f'parte {i}'}]"))
+        campos = categorizar(parte)
+        if not isinstance(campos, dict):
+            return campos
+        nuevos.append(replace(parte, **campos, confianza="alta", fuente="manual",
+                              requiere_confirmacion=False))
+    return nuevos
 
 
 class TUIDividir:

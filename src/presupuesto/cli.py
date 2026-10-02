@@ -535,35 +535,12 @@ def _procesar_interactivo(
         if partes is None:
             consola.print("  [dim]División cancelada.[/dim]")
         else:
-            cats: list = []
-            for i, (importe_parte, desc_parte) in enumerate(partes):
-                consola.print(
-                    f"\n  [bold]Parte {i + 1}/{len(partes)}[/bold]  "
-                    f"{'[red]' if importe_parte < 0 else '[green]'}"
-                    f"{importe_parte:+.2f}€"
-                    f"{'[/red]' if importe_parte < 0 else '[/green]'}"
-                    + (f"  {desc_parte}" if desc_parte else "")
-                )
-                sug_parte = dataclasses.replace(
-                    sugerencia,
-                    importe=importe_parte,
-                    concepto_original=(
-                        f"{mov_crudo.concepto_original or mov_crudo.concepto}"
-                        + (f" [{desc_parte}]" if desc_parte else f" [parte {i + 1}]")
-                    ),
-                )
-                resultado_parte = pedir_categorizacion(datos_maestros, sug_parte)
-                if resultado_parte in ("saltar", "salir", "volver"):
-                    return resultado_parte
-                cat_parte = dataclasses.replace(
-                    sug_parte,
-                    **resultado_parte,
-                    confianza="alta",
-                    fuente="manual",
-                    requiere_confirmacion=False,
-                )
-                cats.append(cat_parte)
-            return cats
+            from presupuesto.tui_dividir import categorizar_division
+            resultado = categorizar_division(
+                sugerencia, partes, lambda parte: pedir_categorizacion(datos_maestros, parte))
+            if resultado is not None:
+                return resultado
+            consola.print("  [dim]División cancelada.[/dim]")
 
     # ── Flujo normal (sin división) ───────────────────────────────────────────
     resultado = pedir_categorizacion(datos_maestros, sugerencia)

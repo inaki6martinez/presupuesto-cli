@@ -29,6 +29,25 @@ def libro(ruta):
     wb.close()
 
 
+def test_division_cancelada_no_cambia_original(monkeypatch):
+    from types import SimpleNamespace
+    from presupuesto.tui_revision import TUIRevisionFinal
+    from presupuesto.tui_dividir import TUIDividir, categorizar_division
+    from presupuesto.tui_categorizar import TUICategorizacion
+
+    original = movimiento()
+    maestros = SimpleNamespace(categorias1=[], categorias2=[], categorias3=[],
+                               entidades=[], proveedores=[], tipos_gasto=[])
+    tui = TUIRevisionFinal([original], maestros)
+    monkeypatch.setattr(TUIDividir, "run", lambda self: [(Decimal("-10"), "Uno"), (Decimal("-40"), "Dos")])
+    respuestas = iter([{"categoria1": "Salud"}, "salir"])
+    monkeypatch.setattr(TUICategorizacion, "run", lambda self: next(respuestas))
+    tui._dividir_movimiento(0)
+    assert tui._movs == [original]
+    assert original.categoria1 == "Ocio" and original.importe == -50
+    assert categorizar_division(original, [(Decimal("-10"), ""), (Decimal("-20"), "")], lambda m: {}) is None
+
+
 def test_formulas_lectura_cierre_y_borrado(tmp_path):
     from io import StringIO
     from presupuesto.duplicados import detectar_duplicados

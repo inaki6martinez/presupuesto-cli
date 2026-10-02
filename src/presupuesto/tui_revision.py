@@ -239,7 +239,7 @@ class TUIRevisionFinal:
             )
 
     def _dividir_movimiento(self, idx: int) -> None:
-        from presupuesto.tui_dividir import TUIDividir
+        from presupuesto.tui_dividir import TUIDividir, categorizar_division
         from presupuesto.tui_categorizar import TUICategorizacion
 
         mov = self._movs[idx]
@@ -247,27 +247,10 @@ class TUIRevisionFinal:
         if partes is None:
             return
 
-        nuevos = []
-        for i, (importe, desc) in enumerate(partes):
-            mov_parte = dataclasses.replace(
-                mov,
-                importe=importe,
-                concepto_original=(
-                    (mov.concepto_original or "")
-                    + (f" [{desc}]" if desc else f" [parte {i + 1}]")
-                ),
-            )
-            tui = TUICategorizacion(mov_parte, self._maestros)
-            resultado = tui.run()
-            if isinstance(resultado, dict):
-                mov_parte = dataclasses.replace(
-                    mov_parte, **resultado,
-                    confianza="alta", fuente="manual", requiere_confirmacion=False,
-                )
-            nuevos.append(mov_parte)
-
-        self._movs[idx:idx + 1] = nuevos
-        self._cursor = min(self._cursor, len(self._movs) - 1)
+        nuevos = categorizar_division(mov, partes, lambda parte: TUICategorizacion(parte, self._maestros).run())
+        if isinstance(nuevos, list):
+            self._movs[idx:idx + 1] = nuevos
+            self._cursor = min(self._cursor, len(self._movs) - 1)
 
     def _kb(self) -> KeyBindings:
         kb = KeyBindings()
