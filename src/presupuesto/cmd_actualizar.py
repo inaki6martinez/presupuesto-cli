@@ -1,10 +1,10 @@
-"""Comando 'actualizar': ajusta el balance de una cuenta con una entrada Finanzas/Balance.
+"""Comando 'actualizar': ajusta el balance de una cuenta con movimientos categorizados.
 
 Flujo:
 1. Lee los balances actuales de cada cuenta sumando la hoja 'Datos' (Estado=Real).
 2. TUI para seleccionar la cuenta.
 3. Prompt para introducir el valor real actual.
-4. Calcula la diferencia y escribe una entrada Finanzas/Balance en el xlsx.
+4. Permite categorizar o dividir la diferencia antes de escribirla en el xlsx.
 """
 
 from __future__ import annotations
@@ -288,10 +288,29 @@ def _pedir_registrar_revision(consola, cuenta: str, gestor, hoy: date) -> None:
 
 @click.command("actualizar")
 def cmd_actualizar():
-    """Ajusta el balance de una cuenta introduciendo su valor real actual."""
+    """Ajusta el balance de una cuenta a su valor real actual.
+
+    Abre un selector de cuentas con su balance calculado (suma de entradas
+    Real en la hoja Datos). Al introducir el valor real actual, calcula la
+    diferencia y permite categorizarla o dividirla antes de escribir en el xlsx.
+
+    Flujo:
+
+    \b
+      1. Selecciona la cuenta en la lista (filtrable escribiendo).
+      2. Introduce el valor real actual de la cuenta.
+      3. Enter para categorizar, d para dividir y categorizar cada parte.
+      4. Confirma con c y Enter para escribir los movimientos.
+      5. Opcionalmente registra la fecha de revisión en revisiones.json.
+
+    El selector vuelve a la lista tras cada ajuste, permitiendo actualizar
+    varias cuentas en una sola sesión. Sal con Esc.
+    """
     from rich.console import Console
     from presupuesto.config import cargar_config
     from presupuesto.escritor import EscritorDatos
+    from presupuesto.maestro import DatosMaestros
+    from presupuesto.tui_revision import TUIRevisionFinal
 
     consola = Console()
 
@@ -314,6 +333,7 @@ def cmd_actualizar():
         consola.print("[red]No se encontraron cuentas en la hoja Claves.[/red]")
         raise SystemExit(1)
 
+    datos_maestros = DatosMaestros(ruta_xlsx)
     from presupuesto.categorizar import MovimientoCategorizado
     from presupuesto.duplicados import GestorRevisiones
     gestor_revisiones = GestorRevisiones()
@@ -354,14 +374,7 @@ def cmd_actualizar():
             _pedir_registrar_revision(consola, cuenta, gestor_revisiones, hoy)
             continue
 
-        consola.print(f"\n  Se escribirá:  {hoy.year} {mes}  Finanzas / Balance  "
-                      f"{diferencia:+.2f}€  {cuenta}")
-
-        if not click.confirm("\n  ¿Confirmar?", default=True):
-            consola.print("  [dim]Cancelado, volviendo a la lista.[/dim]")
-            continue
-
-        # Escribir
+        # Finanzas/Balance como propuesta editable.
         mov = MovimientoCategorizado(
             año=hoy.year,
             mes=mes,
@@ -382,8 +395,20 @@ def cmd_actualizar():
             concepto_original=f"Ajuste balance {cuenta} → {nuevo_valor:+.2f}€",
         )
 
+        revision = TUIRevisionFinal([mov], datos_maestros)
+        resultado = revision.run()
+        while resultado == "volver":
+            resultado = revision.run()
+        if resultado is not True:
+            consola.print("  [dim]Cancelado, volviendo a la lista.[/dim]")
+            continue
+        movimientos = revision._movs
+        if sum(m.importe for m in movimientos) != diferencia:
+            consola.print("  [red]Las partes no suman la diferencia. No se ha escrito nada.[/red]")
+            continue
+
         try:
-            n = EscritorDatos(ruta_xlsx).escribir([mov])
+            n = EscritorDatos(ruta_xlsx).escribir(movimientos)
             consola.print(f"  [green]✓ {n} entrada(s) escritas.[/green]")
         except Exception as e:
             consola.print(f"  [red]Error al escribir:[/red] {e}")
