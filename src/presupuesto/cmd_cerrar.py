@@ -313,7 +313,7 @@ def _ejecutar(ruta_xlsx: Path, año_actual: int, plan: dict) -> tuple[int, int]:
     import openpyxl
     import shutil
     from datetime import datetime
-    from presupuesto.escritor import detectar_formulas_cuenta, adaptar_formula_fila, eliminar_filas
+    from presupuesto.escritor import detectar_formulas_cuenta, adaptar_formula_fila, eliminar_filas, guardar_libro
 
     año_sig   = año_actual + 1
     crear_sig = plan["crear_sig"]
@@ -370,8 +370,10 @@ def _ejecutar(ruta_xlsx: Path, año_actual: int, plan: dict) -> tuple[int, int]:
             _append_presupuesto(plantilla, año_actual)
             n_creadas += 1
 
-    wb.save(str(ruta_xlsx))
-    wb.close()
+    try:
+        guardar_libro(wb, ruta_xlsx)
+    finally:
+        wb.close()
 
     return n_creadas, len(borrar)
 

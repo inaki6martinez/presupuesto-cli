@@ -41,11 +41,8 @@ class GestorMarcadores:
                 self._datos = {}
 
     def _guardar(self) -> None:
-        self._ruta.parent.mkdir(parents=True, exist_ok=True)
-        self._ruta.write_text(
-            json.dumps(self._datos, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        from presupuesto.escritor import guardar_json
+        guardar_json(self._ruta, self._datos)
 
     def obtener_marcador(self, cuenta: str) -> date | None:
         """Devuelve la fecha del último movimiento importado para esta cuenta."""
@@ -102,11 +99,8 @@ class GestorRevisiones:
                 self._datos = {}
 
     def _guardar(self) -> None:
-        self._ruta.parent.mkdir(parents=True, exist_ok=True)
-        self._ruta.write_text(
-            json.dumps(self._datos, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        from presupuesto.escritor import guardar_json
+        guardar_json(self._ruta, self._datos)
 
     def obtener_revision(self, cuenta: str) -> date | None:
         """Devuelve la fecha de la última revisión manual de esta cuenta."""

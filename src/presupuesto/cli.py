@@ -342,55 +342,44 @@ def cmd_importar(archivos, banco, cuenta, dry_run, no_interactivo, verbose, desd
             "quedarán en pendientes.[/yellow]"
         )
 
-    try:
-        escritor = EscritorDatos(ruta_xlsx)
-        n_escritos = escritor.escribir(agrupados)
-    except Exception as e:
-        consola.print(f"[red]Error al escribir en el xlsx:[/red] {e}")
-        ruta_guardada = _guardar_recovery(agrupados, ruta_xlsx)
-        consola.print(
-            f"[yellow]Los {len(agrupados)} movimiento(s) se han guardado para recuperación.[/yellow]\n"
-            f"  Cierra el archivo xlsx y ejecuta:  [bold]presupuesto recuperar[/bold]\n"
-            f"  (fichero: {ruta_guardada})"
-        )
-        return
+    _escribir_importacion(agrupados, ruta_xlsx, pendientes)
 
-    _RUTA_RECOVERY.unlink(missing_ok=True)   # limpiar recovery si existía
-    consola.print(f"\n[green]✓ {n_escritos} fila(s) escritas en presupuesto.xlsx.[/green]")
 
-    # --- Actualizar marcadores y revisiones ---
-    from presupuesto.duplicados import GestorRevisiones
-    gestor_revisiones = GestorRevisiones()
-    hoy = date.today()
-
-    max_fechas: dict[str, date] = defaultdict(lambda: date.min)
-    for mov_crudo, _, cuenta_m in todos_aceptados:
-        if mov_crudo.fecha > max_fechas[cuenta_m]:
-            max_fechas[cuenta_m] = mov_crudo.fecha
-    for cuenta_m, fecha_m in max_fechas.items():
-        gestor_marcadores.actualizar_marcador(cuenta_m, fecha_m)
-        gestor_revisiones.registrar_revision(cuenta_m, hoy)
-        if verbose:
-            consola.print(f"  [dim]Marcador actualizado: {cuenta_m} → {fecha_m}[/dim]")
-            consola.print(f"  [dim]Revisión registrada:  {cuenta_m} → {hoy}[/dim]")
-
-    # Si se expandieron cuotas hipotecarias, registrar revisión de la cuenta Hipoteca Piso
-    from presupuesto.hipoteca import _CUENTA_HIPOTECA_PISO
-    if any(m.fuente == "hipoteca:balance" for m in agrupados):
-        gestor_revisiones.registrar_revision(_CUENTA_HIPOTECA_PISO, hoy)
-        if verbose:
-            consola.print(f"  [dim]Revisión registrada:  {_CUENTA_HIPOTECA_PISO} → {hoy}[/dim]")
-
-    # Si se añadió contrapartida de aportaciones a fondos, registrar revisión de la cuenta Fondos
-    from presupuesto.fondos import _CUENTA_FONDOS
-    if any(m.fuente == "fondos:balance" for m in agrupados):
-        gestor_revisiones.registrar_revision(_CUENTA_FONDOS, hoy)
-        if verbose:
-            consola.print(f"  [dim]Revisión registrada:  {_CUENTA_FONDOS} → {hoy}[/dim]")
-
-    # --- Guardar pendientes si los hay ---
+def _finalizar_importacion(movimientos, pendientes, fecha_revision: date) -> None:
+    from presupuesto.duplicados import GestorMarcadores, GestorRevisiones
+    marcadores, revisiones = GestorMarcadores(), GestorRevisiones()
+    fechas: dict[str, date] = {}
+    for mov in movimientos:
+        for origen in mov.originales:
+            cuenta, fecha = origen["cuenta"], date.fromisoformat(origen["fecha"])
+            fechas[cuenta] = max(fechas.get(cuenta, date.min), fecha)
+    for cuenta, fecha in fechas.items():
+        marcadores.actualizar_marcador(cuenta, fecha)
+    for cuenta in fechas.keys() | {m.cuenta for m in movimientos}:
+        anterior = revisiones.obtener_revision(cuenta)
+        revisiones.registrar_revision(cuenta, max(anterior or date.min, fecha_revision))
     if pendientes:
         _guardar_pendientes(pendientes)
+
+
+def _escribir_importacion(movimientos, ruta_xlsx, pendientes) -> bool:
+    from presupuesto.escritor import EscritorDatos, guardar_json
+    # El diario existe antes de escribir y solo se borra al completar los metadatos.
+    ruta = _guardar_recovery(movimientos, ruta_xlsx, pendientes)
+    datos = json.loads(ruta.read_text(encoding="utf-8"))
+    try:
+        n = EscritorDatos(ruta_xlsx).escribir(movimientos)
+        datos["escrito"] = True
+        guardar_json(ruta, datos)
+        _finalizar_importacion(movimientos, pendientes, date.fromisoformat(datos["fecha_revision"]))
+        ruta.unlink()
+    except Exception as e:
+        consola.print(f"[red]Error al guardar la importación:[/red] {e}")
+        consola.print(f"[yellow]Recuperación conservada:[/yellow] {ruta}\n"
+                      f"  Ejecuta: presupuesto recuperar --archivo '{ruta}'")
+        return False
+    consola.print(f"\n[green]✓ {n} fila(s) escritas en presupuesto.xlsx.[/green]")
+    return True
 
 
 def _crear_gestor_reglas():
@@ -696,7 +685,7 @@ def _guardar_sin_regla(movimientos) -> int:
     return len(nuevas)
 
 
-def _guardar_recovery(agrupados: list, ruta_xlsx: str) -> Path:
+def _guardar_recovery(agrupados: list, ruta_xlsx: str, pendientes=None) -> Path:
     """Guarda los movimientos categorizados en recovery.json para poder reintentarlos."""
     from datetime import datetime
     _RUTA_RECOVERY.parent.mkdir(parents=True, exist_ok=True)
@@ -709,18 +698,35 @@ def _guardar_recovery(agrupados: list, ruta_xlsx: str) -> Path:
         "timestamp": datetime.now().isoformat(timespec="seconds"),
         "ruta_xlsx": str(ruta_xlsx),
         "movimientos": movs,
+        "pendientes": pendientes or [],
+        "fecha_revision": date.today().isoformat(),
+        "escrito": False,
     }
-    _RUTA_RECOVERY.write_text(json.dumps(datos, ensure_ascii=False, indent=2), encoding="utf-8")
-    return _RUTA_RECOVERY
+    import openpyxl
+    wb = openpyxl.load_workbook(ruta_xlsx, read_only=True)
+    try:
+        datos["primera_fila"] = 2
+        for fila, valores in enumerate(wb["Datos"].iter_rows(min_row=2, values_only=True), 2):
+            if any(v is not None for v in valores[:13]):
+                datos["primera_fila"] = fila + 1
+    finally:
+        wb.close()
+    from presupuesto.escritor import guardar_json
+    ruta = _RUTA_RECOVERY
+    if ruta.exists():
+        ruta = ruta.with_name(f"{ruta.stem}_{datetime.now():%Y%m%d_%H%M%S_%f}.json")
+    guardar_json(ruta, datos)
+    return ruta
 
 
-def _cargar_recovery() -> tuple[list, str] | None:
+def _cargar_recovery(ruta=None) -> tuple[list, str] | None:
     """Carga los movimientos de recovery.json. Devuelve (movimientos, ruta_xlsx) o None."""
-    if not _RUTA_RECOVERY.exists():
+    ruta = ruta or _RUTA_RECOVERY
+    if not ruta.exists():
         return None
     from decimal import Decimal
     from presupuesto.categorizar import MovimientoCategorizado
-    datos = json.loads(_RUTA_RECOVERY.read_text(encoding="utf-8"))
+    datos = json.loads(ruta.read_text(encoding="utf-8"))
     movs = []
     for d in datos["movimientos"]:
         d["importe"] = Decimal(d["importe"])
@@ -737,11 +743,11 @@ def _guardar_pendientes(pendientes: list[dict]) -> None:
             existentes = json.loads(_RUTA_PENDIENTES.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             existentes = []
-    existentes.extend(pendientes)
-    _RUTA_PENDIENTES.write_text(
-        json.dumps(existentes, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    from presupuesto.escritor import guardar_json
+    for pendiente in pendientes:
+        if pendiente not in existentes:
+            existentes.append(pendiente)
+    guardar_json(_RUTA_PENDIENTES, existentes)
     consola.print(
         f"  [yellow]{len(pendientes)} movimiento(s) guardado(s) en "
         f"pendientes.json[/yellow]  ({_RUTA_PENDIENTES})"
@@ -1568,36 +1574,58 @@ def maestro_todo():
 
 
 @click.command("recuperar")
-def cmd_recuperar():
-    """Reintenta escribir en xlsx los movimientos guardados tras un fallo anterior."""
-    resultado = _cargar_recovery()
-    if resultado is None:
+@click.option("--archivo", type=click.Path(exists=True, path_type=Path), default=None,
+              help="Fichero de recuperación concreto; por defecto el más antiguo.")
+def cmd_recuperar(archivo):
+    """Completa una importación conservada tras un fallo de guardado."""
+    from presupuesto.escritor import EscritorDatos, guardar_json
+    ruta = archivo or next(iter(sorted(_RUTA_RECOVERY.parent.glob(f"{_RUTA_RECOVERY.stem}*.json"))), None)
+    if ruta is None:
         consola.print("[dim]No hay movimientos pendientes de recuperación.[/dim]")
         return
-
-    agrupados, ruta_xlsx = resultado
-    from datetime import datetime
-    datos_raw = json.loads(_RUTA_RECOVERY.read_text(encoding="utf-8"))
-    ts = datos_raw.get("timestamp", "desconocido")
-    consola.print(
-        f"[yellow]Recuperación:[/yellow] {len(agrupados)} movimiento(s) del {ts}\n"
-        f"  → [bold]{ruta_xlsx}[/bold]"
-    )
-    if not click.confirm("\n¿Intentar escribir ahora?", default=True):
-        consola.print("[dim]Cancelado. El fichero recovery.json se mantiene.[/dim]")
+    movimientos, ruta_xlsx = _cargar_recovery(ruta)
+    datos = json.loads(ruta.read_text(encoding="utf-8"))
+    consola.print(f"[yellow]Recuperación:[/yellow] {len(movimientos)} movimiento(s) → {ruta_xlsx}")
+    if not click.confirm("¿Completar la importación ahora?", default=True):
         return
-
     try:
-        from presupuesto.escritor import EscritorDatos
-        escritor = EscritorDatos(ruta_xlsx)
-        n_escritos = escritor.escribir(agrupados)
+        if not datos.get("escrito", False) and not _recuperacion_ya_escrita(datos, movimientos, ruta_xlsx):
+            EscritorDatos(ruta_xlsx).escribir(movimientos)
+            datos["escrito"] = True
+            guardar_json(ruta, datos)
+        _finalizar_importacion(movimientos, datos.get("pendientes", []),
+                               date.fromisoformat(datos.get("fecha_revision", date.today().isoformat())))
+        ruta.unlink()
     except Exception as e:
-        consola.print(f"[red]Error al escribir en el xlsx:[/red] {e}")
-        consola.print("[dim]El fichero recovery.json se mantiene para el próximo intento.[/dim]")
+        consola.print(f"[red]Error al recuperar:[/red] {e}\n[dim]Se conserva {ruta} para reintentar.[/dim]")
         return
+    consola.print("[green]✓ Importación recuperada.[/green]")
 
-    _RUTA_RECOVERY.unlink(missing_ok=True)
-    consola.print(f"\n[green]✓ {n_escritos} fila(s) escritas en presupuesto.xlsx.[/green]")
+
+def _recuperacion_ya_escrita(datos, movimientos, ruta_xlsx) -> bool:
+    """Reconoce el append si el proceso falló antes de actualizar el diario."""
+    import openpyxl
+    from decimal import Decimal
+    from presupuesto.escritor import leer_numero
+    inicio = datos.get("primera_fila")
+    if inicio is None:
+        return False
+    wb = openpyxl.load_workbook(ruta_xlsx, read_only=True)
+    try:
+        filas = list(wb["Datos"].iter_rows(min_row=inicio, max_row=inicio + len(movimientos) - 1,
+                                          max_col=13, values_only=True))
+        for fila, mov in zip(filas, movimientos):
+            campos = (mov.año, mov.mes, mov.categoria1, mov.categoria2, mov.categoria3, mov.entidad,
+                      mov.proveedor, mov.tipo_gasto, mov.cuenta, mov.estado)
+            existentes = tuple(fila[i] for i in (0, 1, 2, 3, 4, 5, 7, 8, 9, 12))
+            if tuple(str(v or "") for v in existentes) != tuple(str(v or "") for v in campos):
+                return False
+            importe = leer_numero(fila[6])
+            if importe is None or abs(Decimal(str(importe)) - mov.importe) > Decimal("0.000001"):
+                return False
+        return len(filas) == len(movimientos)
+    finally:
+        wb.close()
 
 
 cli.add_command(cmd_importar)

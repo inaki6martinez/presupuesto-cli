@@ -432,6 +432,14 @@ def _backup(ruta_xlsx: Path) -> None:
     shutil.copy2(str(ruta_xlsx), str(backup))
 
 
+def _guardar_sesion(wb, ruta_local: Path, ruta_origen: Path | None) -> None:
+    from presupuesto.escritor import guardar_libro
+    guardar_libro(wb, ruta_local)
+    if ruta_origen is not None and ruta_origen != ruta_local:
+        _backup(ruta_origen)
+        guardar_libro(wb, ruta_origen)
+
+
 def _insertar_entrada(
     wb,
     claves: dict[str, tuple[str, str]],
@@ -726,7 +734,6 @@ def _tui_vista(
 ) -> None:
 
     import openpyxl
-    import threading
 
     # Workbook compartido para todas las lecturas/escrituras de la sesión.
     # Se abre una sola vez → elimina el load_workbook de cada save.
@@ -817,28 +824,14 @@ def _tui_vista(
     _only_dup        = Condition(lambda: state["view"] == "dup_meses")
     _edit_or_confirm = Condition(lambda: state["view"] in ("edit", "confirm", "dup_meses"))
 
-    # ── disk write background ─────────────────────────────────────────
-
-    _save_thread: list = [None]   # [0] = último hilo de escritura a disco
+    # Una sola escritura síncrona: el libro no puede cambiar mientras se guarda.
+    state["sin_guardar"] = False
 
     def _disk_write(app_ref) -> None:
-        """Hace backup + wb.save() + sync a origen en segundo plano."""
-        def _do() -> None:
-            import shutil as _shutil
-            state["syncing"] = True
-            app_ref.invalidate()
-            try:
-                _backup(ruta_xlsx)
-                wb_live.save(str(ruta_xlsx))
-                if ruta_origen is not None and ruta_origen != ruta_xlsx:
-                    _shutil.copy2(str(ruta_xlsx), str(ruta_origen))
-            finally:
-                state["syncing"] = False
-                app_ref.invalidate()
-
-        t = threading.Thread(target=_do, daemon=True)
-        _save_thread[0] = t
-        t.start()
+        _guardar_sesion(wb_live, ruta_xlsx, ruta_origen)
+        state["sin_guardar"] = False
+        state["e_msg"] = ""
+        app_ref.invalidate()
 
     # ── helpers ───────────────────────────────────────────────────────
 
@@ -1428,8 +1421,8 @@ def _tui_vista(
                 "picker": _render_picker, "confirm": _render_confirm,
                 "dup_meses": _render_dup_meses}
         buf = fn[view](w, h)
-        if state["syncing"]:
-            buf.append(("class:dim", "\n  ↑ Sincronizando…"))
+        if state["sin_guardar"]:
+            buf.append(("class:err", f"\n  Cambios sin guardar: {state['e_msg']}\n  s: reintentar guardado"))
         return FormattedText(buf)
 
     # ── key bindings ──────────────────────────────────────────────────
@@ -1602,20 +1595,27 @@ def _tui_vista(
                     state["e_nueva"] = False
                     state["view"]   = "detail"
                     saved_ok = True
+                if saved_ok:
+                    state["sin_guardar"] = True
+                    _disk_write(app)
             except Exception as ex:
                 state["e_msg"] = f"err:{ex}"
-                state["view"]  = v
+                if not saved_ok:
+                    state["view"] = v
             finally:
                 state["saving"] = False
                 app.invalidate()
-            if saved_ok:
-                # Esperar a escritura anterior antes de lanzar la nueva
-                if _save_thread[0] is not None:
-                    _save_thread[0].join(timeout=60)
-                _disk_write(app)
 
         state["saving"] = True
-        threading.Thread(target=_run_op, daemon=True).start()
+        _run_op()
+
+    @kb.add("s", filter=Condition(lambda: state["view"] in ("main", "detail")))
+    def _reintentar(e):
+        if state["sin_guardar"]:
+            try:
+                _disk_write(e.app)
+            except Exception as ex:
+                state["e_msg"] = f"err:{ex}"
 
 
     # space: toggle selección en detail o dup_meses; en input/picker se escribe
@@ -1756,13 +1756,15 @@ def _tui_vista(
         style=style,
         full_screen=True,
     )
-    app.run()
-
-    # Esperar a que termine la última escritura a disco pendiente
-    if _save_thread[0] is not None:
-        _save_thread[0].join(timeout=60)
-
-    wb_live.close()
+    try:
+        app.run()
+        if state["sin_guardar"]:
+            # Conserva el contenido incluso si también falló la copia local.
+            from presupuesto.escritor import guardar_libro
+            guardar_libro(wb_live, ruta_xlsx)
+        return not state["sin_guardar"]
+    finally:
+        wb_live.close()
 
 
 # ---------------------------------------------------------------------------
@@ -2177,10 +2179,14 @@ def cmd_vista(meses: int, filtro_cat1: str | None, incluir_balance: bool,
             shutil.rmtree(tmp_dir, ignore_errors=True)
             return
 
+    guardado = False
     try:
-        _tui_vista(filas, nav_indices, meses_rango, detalles, ruta_xlsx, claves, opciones,
+        guardado = _tui_vista(filas, nav_indices, meses_rango, detalles, ruta_xlsx, claves, opciones,
                    ruta_origen=ruta_origen, incluir_balance=incluir_balance,
                    modo_balance=modo_balance, modo_gastos=modo_gastos,
                    ajuste_vivienda=ajuste_vivienda, solo_lectura=modo_real)
     finally:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
+        if guardado:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+        else:
+            consola.print(f"[yellow]Copia de la sesión conservada:[/yellow] {ruta_xlsx}")

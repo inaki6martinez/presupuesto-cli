@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import re
 import shutil
+import json
+from tempfile import NamedTemporaryFile
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -17,6 +19,30 @@ import openpyxl
 
 if TYPE_CHECKING:
     from presupuesto.categorizar import MovimientoCategorizado
+
+
+def guardar_json(ruta: Path, datos) -> None:
+    """Sustituye un JSON completo; un fallo conserva el fichero anterior."""
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    with NamedTemporaryFile(dir=ruta.parent, suffix=".tmp", delete=False) as f:
+        temporal = Path(f.name)
+    try:
+        temporal.write_text(json.dumps(datos, ensure_ascii=False, indent=2), encoding="utf-8")
+        temporal.replace(ruta)
+    finally:
+        temporal.unlink(missing_ok=True)
+
+
+def guardar_libro(wb, ruta: str | Path) -> None:
+    """Guarda en el mismo directorio y sustituye el libro solo al terminar."""
+    ruta = Path(ruta)
+    with NamedTemporaryFile(dir=ruta.parent, suffix=".xlsx", delete=False) as f:
+        temporal = Path(f.name)
+    try:
+        wb.save(temporal)
+        temporal.replace(ruta)
+    finally:
+        temporal.unlink(missing_ok=True)
 
 
 def leer_numero(valor) -> float | None:
@@ -171,7 +197,9 @@ class EscritorDatos:
             )
             ws.cell(fila, 13).value = m.estado
 
-        wb.save(str(self._ruta))
-        wb.close()
+        try:
+            guardar_libro(wb, self._ruta)
+        finally:
+            wb.close()
 
         return len(movimientos)

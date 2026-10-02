@@ -94,7 +94,8 @@ def test_volver_a_duplicados_conserva_edicion(tmp_path, monkeypatch):
     parser.parsear.return_value = crudos
     categorizador = Mock()
     categorizador.categorizar.side_effect = lambda m, c: movimiento(
-        importe=m.importe, confianza="alta", concepto_original=m.concepto,
+        importe=m.importe, confianza="alta", requiere_confirmacion=False, concepto_original=m.concepto,
+        categoria2="Salidas" if m.concepto == "Nuevo" else "Compra",
         originales=[{"fecha": m.fecha.isoformat(), "cuenta": c, "concepto": m.concepto}])
     visitas, escritos = [], []
 
@@ -118,7 +119,85 @@ def test_volver_a_duplicados_conserva_edicion(tmp_path, monkeypatch):
     monkeypatch.setattr("presupuesto.escritor.EscritorDatos", lambda *args: escritor)
     monkeypatch.setattr(TUIRevisionDuplicados, "run", lambda self: {0})
     monkeypatch.setattr(TUIRevisionFinal, "run", revisar)
+    recovery = tmp_path / "recovery.json"
+    recovery.write_text('{"otra_importacion": true}')
+    monkeypatch.setattr(cli, "_RUTA_RECOVERY", recovery)
     resultado = CliRunner().invoke(cli.cmd_importar, [str(ruta), "--no-interactivo"])
     assert resultado.exit_code == 0, resultado.exception
     assert visitas == ["Ocio", "Salud"]
     assert escritos[0].categoria1 == "Salud"
+    assert marcadores.obtener_marcador("Cuenta") == date(2026, 9, 10)
+    assert recovery.exists()
+
+
+def test_recuperar_metadatos_sin_repetir_filas(tmp_path, monkeypatch):
+    import json
+    from datetime import date
+    from importlib import import_module
+    from click.testing import CliRunner
+    from presupuesto.duplicados import GestorMarcadores, GestorRevisiones
+
+    cli = import_module("presupuesto.cli")
+    ruta = tmp_path / "datos.xlsx"
+    libro(ruta)
+    recovery, pendientes = tmp_path / "recovery.json", tmp_path / "pendientes.json"
+    monkeypatch.setattr(cli, "_RUTA_RECOVERY", recovery)
+    monkeypatch.setattr(cli, "_RUTA_PENDIENTES", pendientes)
+    marcador = GestorMarcadores(tmp_path / "marcadores.json")
+    revision = GestorRevisiones(tmp_path / "revisiones.json")
+    monkeypatch.setattr("presupuesto.duplicados.GestorMarcadores", lambda: marcador)
+    monkeypatch.setattr("presupuesto.duplicados.GestorRevisiones", lambda: revision)
+    original = movimiento(originales=[{"fecha": "2026-09-10", "cuenta": "Cuenta", "concepto": "Compra"}])
+    finalizar = cli._finalizar_importacion
+    monkeypatch.setattr(cli, "_finalizar_importacion", lambda *args: (_ for _ in ()).throw(OSError("Fallo JSON")))
+    assert not cli._escribir_importacion([original], ruta, [{"concepto": "Pendiente"}])
+    assert json.loads(recovery.read_text())["escrito"]
+    monkeypatch.setattr(cli, "_finalizar_importacion", finalizar)
+    resultado = CliRunner().invoke(cli.cmd_recuperar, input="s\n")
+    assert resultado.exit_code == 0, resultado.exception
+    assert not recovery.exists()
+    assert marcador.obtener_marcador("Cuenta") == date(2026, 9, 10)
+    assert revision.obtener_revision("Cuenta") == date.today()
+    assert json.loads(pendientes.read_text()) == [{"concepto": "Pendiente"}]
+    wb = openpyxl.load_workbook(ruta)
+    assert wb["Datos"].max_row == 3
+    wb.close()
+
+
+def test_fallo_guardado_conserva_original_y_copia_local(tmp_path, monkeypatch):
+    import pytest
+    from presupuesto.escritor import guardar_libro
+    from presupuesto.cmd_vista import _guardar_sesion
+
+    ruta, local = tmp_path / "datos.xlsx", tmp_path / "local.xlsx"
+    libro(ruta)
+    anterior = ruta.read_bytes()
+    wb = openpyxl.load_workbook(ruta)
+    wb["Datos"].cell(2, 7, -99)
+    guardar = wb.save
+
+    def fallo(archivo):
+        Path = type(ruta)
+        Path(archivo).write_bytes(b"incompleto")
+        raise OSError("Disco lleno")
+
+    monkeypatch.setattr(wb, "save", fallo)
+    with pytest.raises(OSError):
+        guardar_libro(wb, ruta)
+    assert ruta.read_bytes() == anterior
+    monkeypatch.setattr(wb, "save", guardar)
+    guardar_atomico = guardar_libro
+
+    def fallo_origen(libro_, destino):
+        if destino == ruta:
+            raise PermissionError("Archivo abierto")
+        guardar_atomico(libro_, destino)
+
+    monkeypatch.setattr("presupuesto.escritor.guardar_libro", fallo_origen)
+    with pytest.raises(PermissionError):
+        _guardar_sesion(wb, local, ruta)
+    assert ruta.read_bytes() == anterior
+    copia = openpyxl.load_workbook(local)
+    assert copia["Datos"].cell(2, 7).value == -99
+    copia.close()
+    wb.close()
