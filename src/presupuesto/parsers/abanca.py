@@ -31,6 +31,13 @@ _RE_PREFIJO_TARJETA = re.compile(r"^\d{12}\s+")
 _RE_SUFIJO_UBICACION = re.compile(r"\s*\\[^\\]*\\[^\s]*$")
 # Referencia Bizum al final del Concepto ampliado
 _RE_REFERENCIA_BIZUM = re.compile(r"\s*#BIZUM_BC2[CE]:\S+$", re.IGNORECASE)
+# Concepto ampliado que es solo una referencia opaca (número de pedido de
+# Amazon, código "Mensual-XXXXXXX-NN" de domiciliaciones, etc.), sin texto
+# descriptivo: no aporta nada para categorizar, así que se ignora y se
+# prefiere el Concepto (que puede tener el nombre del comercio/entidad).
+_RE_SOLO_REFERENCIA = re.compile(
+    r"^(?:PEDIDO\s+[0-9a-f]+|[A-Za-zÁÉÍÓÚÑáéíóúñ]+-[0-9][0-9-]*)$", re.IGNORECASE
+)
 
 # Cabeceras que identifican el CSV de Abanca (en minúsculas)
 _CABECERA_FECHA = "fecha ctble"
@@ -92,7 +99,8 @@ def _construir_concepto(concepto: str, ampliado: str) -> str:
     - Compra con tarjeta (prefijo "767003185863"): limpiar prefijo y
       sufijo de ubicación del Concepto.
     - Resto: si Concepto ampliado tiene contenido real (no vacío tras
-      quitar la referencia Bizum), usarlo. Si no, usar Concepto tal cual.
+      quitar la referencia Bizum, y no es solo una referencia opaca),
+      usarlo. Si no, usar Concepto tal cual.
     """
     ampliado = ampliado.strip()
     concepto = concepto.strip()
@@ -107,7 +115,7 @@ def _construir_concepto(concepto: str, ampliado: str) -> str:
 
     # Para transferencias y conceptos manuales: preferir el ampliado si es descriptivo
     ampliado_limpio = _RE_REFERENCIA_BIZUM.sub("", ampliado).strip()
-    if ampliado_limpio:
+    if ampliado_limpio and not _RE_SOLO_REFERENCIA.match(ampliado_limpio):
         return ampliado_limpio
 
     return concepto
