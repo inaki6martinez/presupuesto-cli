@@ -8,7 +8,11 @@
       "Bash(presupuesto maestro:*)",
       "Bash(presupuesto añadir:*)",
       "Bash(pytest:*)",
-      "Bash(presupuesto vista:*)"
+      "Bash(presupuesto vista:*)",
+      "Bash(python:*)",
+      "Bash(presupuesto estado:*)",
+      "Bash(presupuesto mes:*)",
+      "Bash(pip show:*)"
     ]
   }
 }
