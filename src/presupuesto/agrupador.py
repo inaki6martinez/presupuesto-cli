@@ -7,6 +7,7 @@ proveedor, tipo_gasto, cuenta y estado. Los importes se suman.
 from __future__ import annotations
 
 from decimal import Decimal
+from dataclasses import replace
 
 from presupuesto.categorizar import MovimientoCategorizado
 
@@ -40,24 +41,11 @@ def agrupar_movimientos(
         grupo = grupos[clave]
         rep = grupo[0]
         importe_total = sum((m.importe for m in grupo), Decimal("0"))
-        resultado.append(MovimientoCategorizado(
-            año=rep.año,
-            mes=rep.mes,
-            categoria1=rep.categoria1,
-            categoria2=rep.categoria2,
-            categoria3=rep.categoria3,
-            entidad=rep.entidad,
+        resultado.append(replace(
+            rep,
             importe=importe_total,
-            proveedor=rep.proveedor,
-            tipo_gasto=rep.tipo_gasto,
-            cuenta=rep.cuenta,
-            banco=rep.banco,
-            tipo_cuenta=rep.tipo_cuenta,
-            estado=rep.estado,
-            confianza=rep.confianza,
-            requiere_confirmacion=rep.requiere_confirmacion,
-            concepto_original=rep.concepto_original,
-            n_originales=len(grupo),
+            n_originales=sum(m.n_originales for m in grupo),
+            originales=[o for m in grupo for o in m.originales],
         ))
 
     return resultado

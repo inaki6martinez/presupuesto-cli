@@ -270,7 +270,7 @@ def cmd_importar(archivos, banco, cuenta, dry_run, no_interactivo, verbose, desd
     if dry_run:
         mostrar_resumen(agrupados)
         if exportar and agrupados:
-            _exportar_csv(agrupados, todos_aceptados, exportar)
+            _exportar_csv(agrupados, exportar)
         consola.print("\n[yellow]--dry-run activo: no se ha escrito nada.[/yellow]")
         if pendientes:
             consola.print(
@@ -296,20 +296,21 @@ def cmd_importar(archivos, banco, cuenta, dry_run, no_interactivo, verbose, desd
     # --- Detectar duplicados + revisión final (con opción de volver) ---
     from presupuesto.tui_revision import TUIRevisionDuplicados, TUIRevisionFinal
 
+    agrupados = [dataclasses.replace(m, grupo_revision=i) for i, m in enumerate(agrupados)]
     duplicados = detectar_duplicados(agrupados, ruta_xlsx)
-    agrupados_sin_dups = list(agrupados)  # copia mutable que TUIRevisionFinal puede modificar
+    grupos_revision = {m.grupo_revision: [m] for m in agrupados}
     excl_dups: set[int] | None = None     # None = primera visita (todos excluidos por defecto)
 
     while True:
+        excluir_grupos = set()
         # Pantalla de duplicados
         if duplicados:
             tui_dups = TUIRevisionDuplicados(duplicados, excl_inicial=excl_dups)
             excluidos_idx = tui_dups.run()
             excl_dups = set(excluidos_idx)   # persiste para la próxima vuelta con 'b'
-            excluir_ids = {id(duplicados[i][0]) for i in excluidos_idx}
-            # Reconstruir desde agrupados_sin_dups (puede tener edits previos de TUIRevisionFinal)
-            # Solo excluimos los que siguen siendo duplicados marcados y coinciden por id
-            agrupados_sin_dups = [m for m in agrupados if id(m) not in excluir_ids]
+            excluir_grupos = {duplicados[i][0].grupo_revision for i in excluidos_idx}
+        agrupados_sin_dups = [m for grupo, movs in grupos_revision.items()
+                             if grupo not in excluir_grupos for m in movs]
         # (si no hay duplicados, agrupados_sin_dups ya tiene el estado correcto de la iteración anterior)
 
         if not agrupados_sin_dups:
@@ -319,6 +320,8 @@ def cmd_importar(archivos, banco, cuenta, dry_run, no_interactivo, verbose, desd
         # Pantalla de revisión final
         tui_final = TUIRevisionFinal(agrupados_sin_dups, datos_maestros)
         resultado_final = tui_final.run()
+        for grupo in grupos_revision.keys() - excluir_grupos:
+            grupos_revision[grupo] = [m for m in tui_final._movs if m.grupo_revision == grupo]
         if resultado_final == "volver":
             # Preservar los movimientos tal como los dejó TUIRevisionFinal (edits/divisiones)
             agrupados_sin_dups = list(tui_final._movs)
@@ -331,7 +334,7 @@ def cmd_importar(archivos, banco, cuenta, dry_run, no_interactivo, verbose, desd
     agrupados = list(tui_final._movs)
 
     if exportar:
-        _exportar_csv(agrupados, todos_aceptados, exportar)
+        _exportar_csv(agrupados, exportar)
 
     if pendientes:
         consola.print(
@@ -603,26 +606,18 @@ def _procesar_interactivo(
     return cat_final
 
 
-def _exportar_csv(agrupados, todos_aceptados, ruta_csv: str) -> None:
-    """Exporta el resultado de la categorización a un CSV.
-
-    Incluye el concepto original completo (del movimiento crudo) y la confianza.
-    Si un movimiento agrupado representa varios movimientos crudos, se expande
-    una fila por cada movimiento crudo original.
-    """
+def _exportar_csv(agrupados, ruta_csv: str) -> None:
+    """Exporta las mismas filas definitivas que se escriben en Excel."""
     import csv
 
-    # Mapa concepto_original → confianza desde los movimientos categorizados
-    # (antes de agrupar, cada MovimientoCategorizado tiene su concepto_original)
-    # todos_aceptados: list of (MovimientoCrudo, MovimientoCategorizado, cuenta)
     filas: list[dict] = []
-    for mov_crudo, mov_cat, _ in todos_aceptados:
+    for mov_cat in agrupados:
         filas.append({
-            "concepto_original": mov_crudo.concepto_original or mov_crudo.concepto,
-            "fecha":             str(mov_crudo.fecha),
+            "concepto_original": mov_cat.concepto_original,
+            "fecha":             " | ".join(dict.fromkeys(o["fecha"] for o in mov_cat.originales)),
             "mes":               mov_cat.mes,
             "año":               mov_cat.año,
-            "importe":           float(mov_crudo.importe),
+            "importe":           str(mov_cat.importe),
             "categoria1":        mov_cat.categoria1,
             "categoria2":        mov_cat.categoria2,
             "categoria3":        mov_cat.categoria3,

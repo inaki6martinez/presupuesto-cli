@@ -98,6 +98,8 @@ class MovimientoCategorizado:
     requiere_confirmacion: bool = True
     concepto_original: str = ""
     n_originales: int = 1             # movimientos originales que forman este grupo (tras agrupar)
+    originales: list[dict[str, str]] = field(default_factory=list)
+    grupo_revision: int | None = None
 
 
 @dataclass
@@ -185,6 +187,8 @@ class Categorizador:
             año=año, mes=mes, importe=movimiento.importe,
             cuenta=cuenta, banco=banco, tipo_cuenta=tipo_cuenta,
             estado="Real", concepto_original=movimiento.concepto_original,
+            originales=[{"fecha": fecha.isoformat(), "cuenta": cuenta,
+                         "concepto": movimiento.concepto_original or movimiento.concepto}],
         )
 
         # Capa 1 — reglas
