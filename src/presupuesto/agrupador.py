@@ -46,6 +46,7 @@ def agrupar_movimientos(
             importe=importe_total,
             n_originales=sum(m.n_originales for m in grupo),
             originales=[o for m in grupo for o in m.originales],
+            concepto_original=" | ".join(dict.fromkeys(m.concepto_original for m in grupo if m.concepto_original)),
         ))
 
     return resultado

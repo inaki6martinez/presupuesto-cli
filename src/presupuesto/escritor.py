@@ -40,6 +40,8 @@ def guardar_libro(wb, ruta: str | Path) -> None:
         temporal = Path(f.name)
     try:
         wb.save(temporal)
+        if ruta.exists():
+            shutil.copymode(ruta, temporal)
         temporal.replace(ruta)
     finally:
         temporal.unlink(missing_ok=True)
@@ -133,7 +135,7 @@ class EscritorDatos:
 
         Nombre del backup: presupuesto_backup_YYYYMMDD_HHMMSS.xlsx
         """
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         nombre = f"{self._ruta.stem}_backup_{ts}{self._ruta.suffix}"
         ruta_backup = self._ruta.parent / nombre
         shutil.copy2(str(self._ruta), str(ruta_backup))
@@ -158,6 +160,8 @@ class EscritorDatos:
         """
         if not movimientos:
             return 0
+        if any(not m.importe.is_finite() for m in movimientos):
+            raise ValueError("Todos los importes deben ser números finitos")
 
         if crear_backup:
             self.crear_backup()

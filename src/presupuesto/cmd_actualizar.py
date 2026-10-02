@@ -69,33 +69,7 @@ def leer_balances(ruta_xlsx: str | Path) -> dict[str, Decimal]:
     return balances
 
 
-def leer_cuentas(ruta_xlsx: str | Path) -> list[tuple[str, str, str]]:
-    """Devuelve lista de (cuenta, banco, tipo_cuenta) desde la hoja Claves."""
-    import openpyxl
-
-    ruta = Path(ruta_xlsx)
-    if not ruta.exists():
-        return []
-
-    wb = openpyxl.load_workbook(str(ruta), data_only=True, read_only=True)
-    try:
-        ws = wb["Claves"]
-    except KeyError:
-        wb.close()
-        return []
-
-    cuentas = []
-    for row in ws.iter_rows(min_row=2, values_only=True):
-        if not row or row[0] is None:
-            continue
-        cuenta     = str(row[0]).strip()
-        banco      = str(row[1]).strip() if row[1] else ""
-        tipo_cuenta = str(row[2]).strip() if row[2] else ""
-        if cuenta:
-            cuentas.append((cuenta, banco, tipo_cuenta))
-
-    wb.close()
-    return cuentas
+from presupuesto.maestro import leer_cuentas as leer_cuentas
 
 
 # ---------------------------------------------------------------------------
@@ -186,6 +160,8 @@ def cmd_actualizar():
             raw = click.prompt("\n  Nuevo valor real").strip().replace(",", ".")
             try:
                 nuevo_valor = Decimal(raw).quantize(Decimal("0.01"))
+                if not nuevo_valor.is_finite():
+                    raise InvalidOperation
                 break
             except InvalidOperation:
                 consola.print("  [red]Valor no válido. Usa formato numérico (ej: 1234.56)[/red]")

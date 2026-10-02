@@ -150,6 +150,9 @@ def test_exportacion_y_origen(tmp_path):
     original = movimiento(importe=Decimal("-30"), originales=origen, fuente="manual")
     agrupado = agrupar_movimientos([original])[0]
     assert agrupado.originales == origen and agrupado.fuente == "manual"
+    combinado = agrupar_movimientos([replace(original, concepto_original="Compra A"),
+                                    replace(original, concepto_original="Compra B")])[0]
+    assert combinado.concepto_original == "Compra A | Compra B"
     partes = [replace(agrupado, importe=Decimal("-10"), categoria1="Salud"),
               replace(agrupado, importe=Decimal("-20"))]
     ruta = tmp_path / "exportado.csv"
@@ -236,6 +239,9 @@ def test_recuperar_metadatos_sin_repetir_filas(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "_finalizar_importacion", lambda *args: (_ for _ in ()).throw(OSError("Fallo JSON")))
     assert not cli._escribir_importacion([original], ruta, [{"concepto": "Pendiente"}])
     assert json.loads(recovery.read_text())["escrito"]
+    datos = json.loads(recovery.read_text())
+    datos["escrito"] = False  # simula un corte después de escribir Excel
+    recovery.write_text(json.dumps(datos))
     monkeypatch.setattr(cli, "_finalizar_importacion", finalizar)
     resultado = CliRunner().invoke(cli.cmd_recuperar, input="s\n")
     assert resultado.exit_code == 0, resultado.exception
@@ -251,11 +257,15 @@ def test_recuperar_metadatos_sin_repetir_filas(tmp_path, monkeypatch):
 def test_fallo_guardado_conserva_original_y_copia_local(tmp_path, monkeypatch):
     import pytest
     from presupuesto.escritor import guardar_libro
+    from presupuesto.escritor import EscritorDatos
     from presupuesto.cmd_vista import _guardar_sesion
 
     ruta, local = tmp_path / "datos.xlsx", tmp_path / "local.xlsx"
     libro(ruta)
     anterior = ruta.read_bytes()
+    with pytest.raises(ValueError, match="finitos"):
+        EscritorDatos(ruta).escribir([movimiento(importe=Decimal("NaN"))])
+    assert ruta.read_bytes() == anterior
     wb = openpyxl.load_workbook(ruta)
     wb["Datos"].cell(2, 7, -99)
     guardar = wb.save
@@ -285,3 +295,58 @@ def test_fallo_guardado_conserva_original_y_copia_local(tmp_path, monkeypatch):
     assert copia["Datos"].cell(2, 7).value == -99
     copia.close()
     wb.close()
+
+
+def test_pendientes_solo_retira_confirmados_tras_recuperar(tmp_path, monkeypatch):
+    import json
+    from importlib import import_module
+    from datetime import date
+    from click.testing import CliRunner
+    from presupuesto.duplicados import GestorMarcadores, GestorRevisiones
+    from presupuesto.tui_revision import TUIRevisionFinal
+
+    cli = import_module("presupuesto.cli")
+    ruta = tmp_path / "datos.xlsx"
+    libro(ruta)
+    pendientes = [{"cuenta": "Cuenta", "fecha": "2026-09-10", "concepto": "Compra bebé",
+                   "concepto_original": "Compra bebé", "importe": "-30"},
+                  {"cuenta": "Cuenta", "fecha": "2026-09-11", "concepto": "Por revisar",
+                   "concepto_original": "Por revisar", "importe": "-20"}]
+    fichero, recovery = tmp_path / "pendientes.json", tmp_path / "recovery.json"
+    fichero.write_text(json.dumps(pendientes))
+    monkeypatch.setattr(cli, "_RUTA_PENDIENTES", fichero)
+    monkeypatch.setattr(cli, "_RUTA_RECOVERY", recovery)
+    monkeypatch.setattr(cli, "_obtener_ruta_xlsx", lambda: ruta)
+    from presupuesto.reglas import GestorReglas
+    monkeypatch.setattr(cli, "_crear_gestor_reglas", lambda: GestorReglas(tmp_path / "reglas.json"))
+    marcador = GestorMarcadores(tmp_path / "marcadores.json")
+    revision = GestorRevisiones(tmp_path / "revisiones.json")
+    monkeypatch.setattr("presupuesto.duplicados.GestorMarcadores", lambda: marcador)
+    monkeypatch.setattr("presupuesto.duplicados.GestorRevisiones", lambda: revision)
+    respuestas = iter(["saltar", "salir"])
+    monkeypatch.setattr(cli, "_procesar_interactivo", lambda *args: next(respuestas))
+    runner = CliRunner()
+    resultado = runner.invoke(cli.cli, ["pendientes", "revisar"])
+    assert resultado.exit_code == 0, resultado.exception
+    assert json.loads(fichero.read_text()) == pendientes
+    respuestas = iter([movimiento(importe=Decimal("-30"),
+                        originales=[{"cuenta": "Cuenta", "fecha": "2026-09-10", "concepto": "Compra bebé"}]), "saltar"])
+    monkeypatch.setattr(TUIRevisionFinal, "run", lambda self: False)
+    resultado = runner.invoke(cli.cli, ["pendientes", "revisar"])
+    assert resultado.exit_code == 0, resultado.exception
+    assert json.loads(fichero.read_text()) == pendientes
+    respuestas = iter([movimiento(importe=Decimal("-30"),
+                        originales=[{"cuenta": "Cuenta", "fecha": "2026-09-10", "concepto": "Compra bebé"}]), "saltar"])
+    monkeypatch.setattr(TUIRevisionFinal, "run", lambda self: True)
+    escribir = __import__("presupuesto.escritor", fromlist=["EscritorDatos"]).EscritorDatos.escribir
+    monkeypatch.setattr("presupuesto.escritor.EscritorDatos.escribir",
+                        lambda *args: (_ for _ in ()).throw(PermissionError("Archivo abierto")))
+    resultado = runner.invoke(cli.cli, ["pendientes", "revisar"])
+    assert resultado.exit_code == 0, resultado.exception
+    assert json.loads(fichero.read_text()) == pendientes and recovery.exists()
+    monkeypatch.setattr("presupuesto.escritor.EscritorDatos.escribir", escribir)
+    resultado = runner.invoke(cli.cli, ["recuperar"], input="s\n")
+    assert resultado.exit_code == 0, resultado.exception
+    assert json.loads(fichero.read_text()) == pendientes[1:]
+    assert marcador.obtener_marcador("Cuenta") == date(2026, 9, 10)
+    assert not recovery.exists()

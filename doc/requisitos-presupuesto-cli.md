@@ -285,8 +285,8 @@ abanca = ""
 | CLI framework | `click` o `typer` |
 | Lectura/escritura xlsx | `openpyxl` |
 | Extracción PDF | `pdfplumber` (principal), `tabula-py` (fallback para tablas) |
-| Lectura CSV/Excel | `pandas` (solo para lectura, no escritura) |
-| Fuzzy matching | `rapidfuzz` o `thefuzz` |
+| Lectura CSV/Excel | `csv` de la biblioteca estándar y `openpyxl` |
+| Coincidencia con historial | Proveedor contenido en el concepto, sin dependencia adicional |
 | Configuración | `tomllib` (stdlib) + `tomli-w` para escritura |
 | Interfaz interactiva | `rich` (para tablas y prompts bonitos en terminal) |
 | Empaquetado | `pyproject.toml` + `pip install -e .` |

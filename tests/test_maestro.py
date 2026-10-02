@@ -1,20 +1,25 @@
-"""Tests del módulo maestro.py usando el archivo presupuesto.xlsx real."""
+"""Tests del módulo maestro.py con un libro temporal."""
 
 import pytest
 
 from presupuesto.maestro import DatosMaestros
 
-RUTA_XLSX = "/mnt/c/Users/inaki.martinez/OneDrive/presupuesto/presupuesto.xlsx"
-
-
 @pytest.fixture(scope="module")
-def maestro():
-    """Carga DatosMaestros una sola vez para todos los tests del módulo."""
-    pytest.importorskip("openpyxl")
-    import os
-    if not os.path.exists(RUTA_XLSX):
-        pytest.skip(f"presupuesto.xlsx no encontrado en {RUTA_XLSX}")
-    return DatosMaestros(RUTA_XLSX)
+def maestro(tmp_path_factory):
+    import openpyxl
+    from tests.test_integracion import _crear_xlsx_test
+    ruta = tmp_path_factory.mktemp("maestro") / "presupuesto.xlsx"
+    _crear_xlsx_test(ruta)
+    wb = openpyxl.load_workbook(ruta)
+    for columna, valores in {4: ["Compra", "Balance"], 5: ["Piso"],
+                              7: ["Eroski", "Netflix"],
+                              8: ["Fijos", "Optimizable", "Discrecionales", "Excepcionales"]}.items():
+        for fila, valor in enumerate(valores, 2):
+            wb["Maestro"].cell(fila, columna, valor)
+    wb["Claves"].append(["Hipoteca Piso", "BBVA", "Pasivo"])
+    wb.save(ruta)
+    wb.close()
+    return DatosMaestros(ruta)
 
 
 # --- Hoja Maestro ---

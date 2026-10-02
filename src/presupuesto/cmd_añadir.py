@@ -68,28 +68,7 @@ def _leer_meses_presupuesto(ruta_xlsx: Path) -> list[tuple[int, str]]:
     return sorted(meses, key=_orden)
 
 
-def _leer_cuentas(ruta_xlsx: Path) -> list[tuple[str, str, str]]:
-    """Devuelve lista de (cuenta, banco, tipo_cuenta) desde la hoja Claves."""
-    import openpyxl
-
-    wb = openpyxl.load_workbook(str(ruta_xlsx), data_only=True, read_only=True)
-    try:
-        ws = wb["Claves"]
-    except KeyError:
-        wb.close()
-        return []
-
-    resultado = []
-    for row in ws.iter_rows(min_row=2, values_only=True):
-        if not row or row[0] is None:
-            continue
-        cuenta      = str(row[0]).strip()
-        banco       = str(row[1]).strip() if row[1] else ""
-        tipo_cuenta = str(row[2]).strip() if row[2] else ""
-        if cuenta:
-            resultado.append((cuenta, banco, tipo_cuenta))
-    wb.close()
-    return resultado
+from presupuesto.maestro import leer_cuentas as _leer_cuentas
 
 
 # ---------------------------------------------------------------------------

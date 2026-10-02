@@ -104,16 +104,8 @@ def _leer_datos_wb(
     meses_set = set(meses_rango)
 
     # ── Claves: cuenta → (banco, tipo_cuenta) ──────────────────────────
-    claves: dict[str, tuple[str, str]] = {}
-    try:
-        for row in wb["Claves"].iter_rows(min_row=2, values_only=True):
-            if not row or row[0] is None:
-                continue
-            c, b, tc = (str(row[i] or "").strip() for i in (0, 1, 2))
-            if c:
-                claves[c] = (b, tc)
-    except KeyError:
-        pass
+    from presupuesto.maestro import leer_claves
+    claves = {c: (b or "", t or "") for c, (b, t) in leer_claves(wb).items()}
 
     # ── Opciones desde Maestro ──────────────────────────────────────────
     opciones: dict[str, list[str]] = {
@@ -427,18 +419,15 @@ def _leer_datos(
 
 def _backup(ruta_xlsx: Path) -> None:
     """Crea un backup del xlsx con timestamp en el mismo directorio."""
-    import shutil
-    from datetime import datetime
-    ts     = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup = ruta_xlsx.parent / f"{ruta_xlsx.stem}_backup_{ts}{ruta_xlsx.suffix}"
-    shutil.copy2(str(ruta_xlsx), str(backup))
+    from presupuesto.escritor import EscritorDatos
+    EscritorDatos(ruta_xlsx).crear_backup()
 
 
 def _guardar_sesion(wb, ruta_local: Path, ruta_origen: Path | None) -> None:
     from presupuesto.escritor import guardar_libro
+    _backup(ruta_origen or ruta_local)
     guardar_libro(wb, ruta_local)
     if ruta_origen is not None and ruta_origen != ruta_local:
-        _backup(ruta_origen)
         guardar_libro(wb, ruta_origen)
 
 
@@ -979,7 +968,10 @@ def _tui_vista(
             return m
         if campo == "importe":
             try:
-                return Decimal(raw.replace(",", "."))
+                importe = Decimal(raw.replace(",", "."))
+                if not importe.is_finite():
+                    raise InvalidOperation
+                return importe
             except InvalidOperation:
                 state["i_error"] = "Importe no válido (ej: -431.25)"
                 return None

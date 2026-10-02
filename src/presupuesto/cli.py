@@ -48,8 +48,7 @@ def cmd_importar(archivos, banco, cuenta, dry_run, no_interactivo, verbose, desd
     from presupuesto.agrupador import agrupar_movimientos
     from presupuesto.categorizar import Categorizador
     from presupuesto.config import cargar_config
-    from presupuesto.duplicados import GestorMarcadores, detectar_duplicados
-    from presupuesto.escritor import EscritorDatos
+    from presupuesto.duplicados import GestorMarcadores
     from presupuesto.interactivo import mostrar_resumen
     from presupuesto.maestro import DatosMaestros
 
@@ -293,6 +292,26 @@ def cmd_importar(archivos, banco, cuenta, dry_run, no_interactivo, verbose, desd
         _guardar_pendientes(pendientes)
         return
 
+    if pendientes:
+        _guardar_pendientes(pendientes)
+    agrupados = _revisar_importacion(agrupados, datos_maestros, ruta_xlsx)
+    if not agrupados:
+        return
+
+    if exportar:
+        _exportar_csv(agrupados, exportar)
+
+    if pendientes:
+        consola.print(
+            f"[yellow]{len(pendientes)} movimiento(s) sin categorizar "
+            "quedarán en pendientes.[/yellow]"
+        )
+
+    _escribir_importacion(agrupados, ruta_xlsx, pendientes)
+
+
+def _revisar_importacion(agrupados, datos_maestros, ruta_xlsx):
+    from presupuesto.duplicados import detectar_duplicados
     # --- Detectar duplicados + revisión final (con opción de volver) ---
     from presupuesto.tui_revision import TUIRevisionDuplicados, TUIRevisionFinal
 
@@ -311,41 +330,28 @@ def cmd_importar(archivos, banco, cuenta, dry_run, no_interactivo, verbose, desd
             excluir_grupos = {duplicados[i][0].grupo_revision for i in excluidos_idx}
         agrupados_sin_dups = [m for grupo, movs in grupos_revision.items()
                              if grupo not in excluir_grupos for m in movs]
-        # (si no hay duplicados, agrupados_sin_dups ya tiene el estado correcto de la iteración anterior)
 
         if not agrupados_sin_dups:
             consola.print("[yellow]Todos los movimientos fueron excluidos.[/yellow]")
             return
 
         # Pantalla de revisión final
-        tui_final = TUIRevisionFinal(agrupados_sin_dups, datos_maestros)
+        tui_final = TUIRevisionFinal(agrupados_sin_dups, datos_maestros, permitir_volver=bool(duplicados))
         resultado_final = tui_final.run()
         for grupo in grupos_revision.keys() - excluir_grupos:
             grupos_revision[grupo] = [m for m in tui_final._movs if m.grupo_revision == grupo]
         if resultado_final == "volver":
             # Preservar los movimientos tal como los dejó TUIRevisionFinal (edits/divisiones)
-            agrupados_sin_dups = list(tui_final._movs)
             continue   # volver a la pantalla de duplicados
         if not resultado_final:
             consola.print("[dim]Importación cancelada.[/dim]")
             return
         break  # confirmado
 
-    agrupados = list(tui_final._movs)
-
-    if exportar:
-        _exportar_csv(agrupados, exportar)
-
-    if pendientes:
-        consola.print(
-            f"[yellow]{len(pendientes)} movimiento(s) sin categorizar "
-            "quedarán en pendientes.[/yellow]"
-        )
-
-    _escribir_importacion(agrupados, ruta_xlsx, pendientes)
+    return list(tui_final._movs)
 
 
-def _finalizar_importacion(movimientos, pendientes, fecha_revision: date) -> None:
+def _finalizar_importacion(movimientos, pendientes, fecha_revision: date, resueltos=None) -> None:
     from presupuesto.duplicados import GestorMarcadores, GestorRevisiones
     marcadores, revisiones = GestorMarcadores(), GestorRevisiones()
     fechas: dict[str, date] = {}
@@ -358,20 +364,24 @@ def _finalizar_importacion(movimientos, pendientes, fecha_revision: date) -> Non
     for cuenta in fechas.keys() | {m.cuenta for m in movimientos}:
         anterior = revisiones.obtener_revision(cuenta)
         revisiones.registrar_revision(cuenta, max(anterior or date.min, fecha_revision))
+    if resueltos and _RUTA_PENDIENTES.exists():
+        from presupuesto.escritor import guardar_json
+        restantes = [p for p in json.loads(_RUTA_PENDIENTES.read_text(encoding="utf-8")) if p not in resueltos]
+        guardar_json(_RUTA_PENDIENTES, restantes)
     if pendientes:
         _guardar_pendientes(pendientes)
 
 
-def _escribir_importacion(movimientos, ruta_xlsx, pendientes) -> bool:
+def _escribir_importacion(movimientos, ruta_xlsx, pendientes, resueltos=None) -> bool:
     from presupuesto.escritor import EscritorDatos, guardar_json
     # El diario existe antes de escribir y solo se borra al completar los metadatos.
-    ruta = _guardar_recovery(movimientos, ruta_xlsx, pendientes)
+    ruta = _guardar_recovery(movimientos, ruta_xlsx, pendientes, resueltos)
     datos = json.loads(ruta.read_text(encoding="utf-8"))
     try:
         n = EscritorDatos(ruta_xlsx).escribir(movimientos)
         datos["escrito"] = True
         guardar_json(ruta, datos)
-        _finalizar_importacion(movimientos, pendientes, date.fromisoformat(datos["fecha_revision"]))
+        _finalizar_importacion(movimientos, pendientes, date.fromisoformat(datos["fecha_revision"]), resueltos)
         ruta.unlink()
     except Exception as e:
         consola.print(f"[red]Error al guardar la importación:[/red] {e}")
@@ -655,14 +665,12 @@ def _guardar_sin_regla(movimientos) -> int:
 
     if nuevas:
         existentes.extend(nuevas)
-        _RUTA_SIN_REGLA.write_text(
-            json.dumps(existentes, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        from presupuesto.escritor import guardar_json
+        guardar_json(_RUTA_SIN_REGLA, existentes)
     return len(nuevas)
 
 
-def _guardar_recovery(agrupados: list, ruta_xlsx: str, pendientes=None) -> Path:
+def _guardar_recovery(agrupados: list, ruta_xlsx: str, pendientes=None, resueltos=None) -> Path:
     """Guarda los movimientos categorizados en recovery.json para poder reintentarlos."""
     from datetime import datetime
     _RUTA_RECOVERY.parent.mkdir(parents=True, exist_ok=True)
@@ -676,18 +684,24 @@ def _guardar_recovery(agrupados: list, ruta_xlsx: str, pendientes=None) -> Path:
         "ruta_xlsx": str(ruta_xlsx),
         "movimientos": movs,
         "pendientes": pendientes or [],
+        "resueltos": resueltos or [],
         "fecha_revision": date.today().isoformat(),
         "escrito": False,
     }
     import openpyxl
-    wb = openpyxl.load_workbook(ruta_xlsx, read_only=True)
     try:
-        datos["primera_fila"] = 2
-        for fila, valores in enumerate(wb["Datos"].iter_rows(min_row=2, values_only=True), 2):
-            if any(v is not None for v in valores[:13]):
-                datos["primera_fila"] = fila + 1
-    finally:
-        wb.close()
+        wb = openpyxl.load_workbook(ruta_xlsx, read_only=True)
+        try:
+            primera_fila = 2
+            for fila, valores in enumerate(wb["Datos"].iter_rows(min_row=2, values_only=True), 2):
+                if any(v is not None for v in valores[:13]):
+                    primera_fila = fila + 1
+            datos["primera_fila"] = primera_fila
+        finally:
+            wb.close()
+    except Exception:
+        # Un libro ilegible también debe permitir conservar los movimientos.
+        pass
     from presupuesto.escritor import guardar_json
     ruta = _RUTA_RECOVERY
     if ruta.exists():
@@ -716,19 +730,81 @@ def _guardar_pendientes(pendientes: list[dict]) -> None:
     _RUTA_PENDIENTES.parent.mkdir(parents=True, exist_ok=True)
     existentes: list[dict] = []
     if _RUTA_PENDIENTES.exists():
-        try:
-            existentes = json.loads(_RUTA_PENDIENTES.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            existentes = []
+        existentes = json.loads(_RUTA_PENDIENTES.read_text(encoding="utf-8"))
     from presupuesto.escritor import guardar_json
+    n_nuevos = 0
     for pendiente in pendientes:
         if pendiente not in existentes:
             existentes.append(pendiente)
+            n_nuevos += 1
     guardar_json(_RUTA_PENDIENTES, existentes)
-    consola.print(
-        f"  [yellow]{len(pendientes)} movimiento(s) guardado(s) en "
-        f"pendientes.json[/yellow]  ({_RUTA_PENDIENTES})"
-    )
+    if n_nuevos:
+        consola.print(
+            f"  [yellow]{n_nuevos} movimiento(s) guardado(s) en "
+            f"pendientes.json[/yellow]  ({_RUTA_PENDIENTES})"
+        )
+
+
+@click.group("pendientes")
+def cmd_pendientes():
+    """Revisa movimientos guardados sin categorizar."""
+
+
+@cmd_pendientes.command("revisar")
+def cmd_pendientes_revisar():
+    from decimal import Decimal
+    from presupuesto.categorizar import Categorizador
+    from presupuesto.maestro import DatosMaestros
+    from presupuesto.parsers.base import MovimientoCrudo
+    from presupuesto.agrupador import agrupar_movimientos
+    from presupuesto.hipoteca import expandir_hipotecas
+    from presupuesto.fondos import expandir_fondos
+
+    if not _RUTA_PENDIENTES.exists():
+        consola.print("[dim]No hay movimientos pendientes.[/dim]")
+        return
+    pendientes = json.loads(_RUTA_PENDIENTES.read_text(encoding="utf-8"))
+    if not pendientes:
+        consola.print("[dim]No hay movimientos pendientes.[/dim]")
+        return
+    ruta = _obtener_ruta_xlsx()
+    if ruta is None:
+        return
+    maestros, reglas = DatosMaestros(ruta), _crear_gestor_reglas()
+    categorizador = Categorizador(maestros, reglas)
+    categorizador.cargar_historial(ruta)
+    aceptados, resueltos, snapshots = [], [], []
+    idx = 0
+    while idx < len(pendientes):
+        pendiente = pendientes[idx]
+        if idx == len(snapshots):
+            snapshots.append((len(aceptados), len(resueltos)))
+        crudo = MovimientoCrudo(date.fromisoformat(pendiente["fecha"]), pendiente["concepto"],
+                                Decimal(pendiente["importe"]), pendiente.get("concepto_original", ""))
+        sugerencia = categorizador.categorizar(crudo, pendiente["cuenta"])
+        resultado = _procesar_interactivo(crudo, sugerencia, maestros, reglas, idx + 1, len(pendientes))
+        if resultado == "volver":
+            if idx > 0:
+                n_movs, n_resueltos = snapshots[idx - 1]
+                del aceptados[n_movs:]
+                del resueltos[n_resueltos:]
+                del snapshots[idx:]
+                idx -= 1
+            continue
+        if resultado == "salir":
+            break
+        if resultado != "saltar":
+            aceptados.extend(resultado if isinstance(resultado, list) else [resultado])
+            resueltos.append(pendiente)
+        idx += 1
+    if not aceptados:
+        return
+    agrupados = expandir_fondos(expandir_hipotecas(agrupar_movimientos(aceptados), ruta, maestros), maestros)
+    finales = _revisar_importacion(agrupados, maestros, ruta)
+    if finales:
+        origenes = {(o["cuenta"], o["fecha"], o["concepto"]) for m in finales for o in m.originales}
+        resueltos = [p for p in resueltos if (p["cuenta"], p["fecha"], p.get("concepto_original") or p["concepto"]) in origenes]
+        _escribir_importacion(finales, ruta, [], resueltos)
 
 
 @click.group("reglas")
@@ -1273,10 +1349,8 @@ def reglas_revisar():
     if procesadas:
         conceptos_procesados = {e.get("concepto_original", "") for e in procesadas}
         restantes = [e for e in entradas if e.get("concepto_original", "") not in conceptos_procesados]
-        _RUTA_SIN_REGLA.write_text(
-            json.dumps(restantes, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        from presupuesto.escritor import guardar_json
+        guardar_json(_RUTA_SIN_REGLA, restantes)
         consola.print(
             f"\n[green]{len(procesadas)} entrada(s) procesadas.[/green]  "
             f"[dim]{len(restantes)} restante(s).[/dim]"
@@ -1571,7 +1645,8 @@ def cmd_recuperar(archivo):
             datos["escrito"] = True
             guardar_json(ruta, datos)
         _finalizar_importacion(movimientos, datos.get("pendientes", []),
-                               date.fromisoformat(datos.get("fecha_revision", date.today().isoformat())))
+                               date.fromisoformat(datos.get("fecha_revision", date.today().isoformat())),
+                               datos.get("resueltos", []))
         ruta.unlink()
     except Exception as e:
         consola.print(f"[red]Error al recuperar:[/red] {e}\n[dim]Se conserva {ruta} para reintentar.[/dim]")
@@ -1608,6 +1683,7 @@ def _recuperacion_ya_escrita(datos, movimientos, ruta_xlsx) -> bool:
 cli.add_command(cmd_importar)
 cli.add_command(cmd_recuperar)
 cli.add_command(cmd_reglas)
+cli.add_command(cmd_pendientes)
 cli.add_command(cmd_config)
 cli.add_command(cmd_maestro)
 

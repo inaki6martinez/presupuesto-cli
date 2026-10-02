@@ -311,9 +311,7 @@ def _tui_confirmar(año_actual: int, mes_corte: int, plan: dict, datos_: dict,
 def _ejecutar(ruta_xlsx: Path, año_actual: int, plan: dict) -> tuple[int, int]:
     """Aplica el plan al xlsx. Devuelve (n_creadas, n_borradas)."""
     import openpyxl
-    import shutil
-    from datetime import datetime
-    from presupuesto.escritor import detectar_formulas_cuenta, adaptar_formula_fila, eliminar_filas, guardar_libro
+    from presupuesto.escritor import detectar_formulas_cuenta, adaptar_formula_fila, eliminar_filas, guardar_libro, EscritorDatos
 
     año_sig   = año_actual + 1
     crear_sig = plan["crear_sig"]
@@ -321,9 +319,7 @@ def _ejecutar(ruta_xlsx: Path, año_actual: int, plan: dict) -> tuple[int, int]:
     borrar    = sorted(plan["borrar"], reverse=True)
 
     # Backup antes de modificar
-    sufijo = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup = ruta_xlsx.parent / f"{ruta_xlsx.stem}_backup_{sufijo}{ruta_xlsx.suffix}"
-    shutil.copy2(ruta_xlsx, backup)
+    EscritorDatos(ruta_xlsx).crear_backup()
 
     wb = openpyxl.load_workbook(str(ruta_xlsx))
     ws = wb["Datos"]

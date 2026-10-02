@@ -26,6 +26,13 @@ presupuesto importar extracto.csv
 # Simular sin escribir
 presupuesto importar extracto.csv --dry-run
 
+# Categorizar y dividir movimientos guardados sin regla
+presupuesto pendientes revisar
+
+# Completar una importación que falló al guardar
+presupuesto recuperar
+presupuesto recuperar --archivo ~/.config/presupuesto/recovery_20261002_120000_000000.json
+
 # Ver reglas de categorización
 presupuesto reglas listar
 
@@ -36,6 +43,16 @@ presupuesto config
 presupuesto maestro categorias
 presupuesto maestro cuentas
 ```
+
+La revisión final conserva las ediciones al volver a duplicados. El CSV exporta
+las mismas filas confirmadas que Excel, incluidos grupos, divisiones y contrapartidas.
+Los pendientes se retiran cuando se completa el guardado. La recuperación conserva
+sus fechas y restaura los marcadores y revisiones sin repetir filas ya escritas.
+
+`añadir`, `actualizar` y `vista` comparten el selector de cuenta. La vista utiliza
+el mismo selector de categorías que la importación; al editar varias filas solo
+aplica los campos modificados. Si falla el guardado, permite reintentarlo con `s`
+y conserva la copia temporal al salir.
 
 ## Estructura del proyecto
 

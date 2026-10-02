@@ -2,7 +2,7 @@
 
 Implementa tres capas:
   1. Reglas exactas (reglas.json) — confianza alta.
-  2. Similitud con historial (rapidfuzz) — confianza media o baja.
+  2. Coincidencia de proveedor en el historial — confianza media o baja.
   3. Sin match — campos vacíos con sugerencias basadas en el contexto de cuenta.
 """
 

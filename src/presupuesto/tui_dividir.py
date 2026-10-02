@@ -239,6 +239,8 @@ class TUIDividir:
             raw = self._buf.strip().replace(",", ".")
             try:
                 valor = Decimal(raw).quantize(Decimal("0.01"))
+                if not valor.is_finite():
+                    raise InvalidOperation
                 self._parte_actual()["importe"] = valor
             except InvalidOperation:
                 pass  # descartamos valor inválido

@@ -30,6 +30,29 @@ def _leer_columna(hoja, col: int) -> list:
     return valores
 
 
+def leer_claves(wb) -> dict[str, tuple[str | None, str | None]]:
+    """Lee las cuentas de un libro abierto, sin depender de la hoja Maestro."""
+    if "Claves" not in wb.sheetnames:
+        return {}
+    claves = {}
+    for cuenta, banco, tipo in wb["Claves"].iter_rows(min_row=2, max_col=3, values_only=True):
+        nombre = str(cuenta or "").strip()
+        if nombre:
+            claves[nombre] = (str(banco).strip() if banco else None,
+                              str(tipo).strip() if tipo else None)
+    return claves
+
+
+def leer_cuentas(ruta: str | Path) -> list[tuple[str, str, str]]:
+    if not Path(ruta).exists():
+        return []
+    wb = openpyxl.load_workbook(ruta, read_only=True, data_only=True)
+    try:
+        return [(c, b or "", t or "") for c, (b, t) in leer_claves(wb).items()]
+    finally:
+        wb.close()
+
+
 class DatosMaestros:
     """Carga y expone los valores maestros y las claves de cuentas del archivo xlsx."""
 
@@ -50,17 +73,7 @@ class DatosMaestros:
         self._datos["anos"] = [int(a) for a in self._datos["anos"]]
 
         # --- Hoja Claves: cuenta → (banco, tipo_cuenta) ---
-        hoja_claves = wb["Claves"]
-        self._claves: dict[str, tuple[str | None, str | None]] = {}
-        for fila in range(2, hoja_claves.max_row + 1):
-            cuenta = hoja_claves.cell(fila, 1).value
-            banco = hoja_claves.cell(fila, 2).value
-            tipo_cuenta = hoja_claves.cell(fila, 3).value
-            if cuenta:
-                self._claves[str(cuenta).strip()] = (
-                    str(banco).strip() if banco else None,
-                    str(tipo_cuenta).strip() if tipo_cuenta else None,
-                )
+        self._claves = leer_claves(wb)
 
         wb.close()
 

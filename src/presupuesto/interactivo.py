@@ -5,7 +5,7 @@ Funciones públicas:
     pedir_categorizacion        — flujo campo a campo con búsqueda por texto.
     preguntar_guardar_regla     — ofrece guardar la categorización como regla.
     mostrar_resumen             — tabla resumen antes de escribir.
-    pedir_confirmacion_escritura — confirmación final.
+    pedir_registrar_revision    — fecha de revisión compartida.
 """
 
 from __future__ import annotations
@@ -38,55 +38,15 @@ _CONFIANZA_ESTILO: dict[str, tuple[str, str]] = {
     "ninguna": ("dim",    "·"),
 }
 
-# Campos a completar: (clave_resultado, campo_maestro, etiqueta_display)
-_CAMPOS = [
-    ("categoria1", "categorias1", "Categoría 1"),
-    ("categoria2", "categorias2", "Categoría 2"),
-    ("categoria3", "categorias3", "Categoría 3"),
-    ("entidad",    "entidades",   "Entidad"),
-    ("proveedor",  "proveedores", "Proveedor"),
-    ("tipo_gasto", "tipos_gasto", "Tipo de gasto"),
-]
-
 _PALABRAS_COMUNES = {
     "de", "en", "la", "el", "los", "las", "del", "al", "y", "a",
     "por", "para", "con", "se", "un", "una", "lo", "es", "que",
     "no", "si", "mas", "su", "sus", "mi", "me", "te", "le", "pago",
 }
 
-_MAX_OPCIONES = 15  # máximo de opciones a mostrar antes de pedir filtro
-
-# ---------------------------------------------------------------------------
-# Señales internas para propagación desde _seleccionar_valor
-# ---------------------------------------------------------------------------
-
-class _Saltar(Exception):
-    pass
-
-class _Salir(Exception):
-    pass
-
-class _Volver(Exception):
-    pass
-
-# ---------------------------------------------------------------------------
-# Helpers internos
-# ---------------------------------------------------------------------------
-
 def _formato_importe(importe: Decimal) -> Text:
     texto = f"{importe:+.2f} €"
     return Text(texto, style="red" if importe < 0 else "green")
-
-
-def _campos_de_sugerencia(s: MovimientoCategorizado) -> dict:
-    return {
-        "categoria1": s.categoria1,
-        "categoria2": s.categoria2,
-        "categoria3": s.categoria3,
-        "entidad":    s.entidad,
-        "proveedor":  s.proveedor,
-        "tipo_gasto": s.tipo_gasto,
-    }
 
 
 def _sugerir_patron(concepto: str) -> str:
@@ -99,98 +59,6 @@ def _sugerir_patron(concepto: str) -> str:
     if not candidatas:
         return (concepto[:20] if len(concepto) > 20 else concepto).lower()
     return max(candidatas, key=len)
-
-
-def _seleccionar_valor(etiqueta: str, opciones: list[str], sugerencia: str = "") -> str:
-    """Picker interactivo con búsqueda por texto.
-
-    El usuario puede:
-    - Escribir un número para seleccionar la opción correspondiente.
-    - Escribir texto para filtrar las opciones.
-    - Pulsar Enter para aceptar la sugerencia (o dejar vacío).
-    - Escribir 's' para saltar el movimiento.
-    - Escribir 'q' para guardar y salir.
-
-    Lanza _Saltar o _Salir según corresponda.
-    """
-    filtro = ""
-
-    while True:
-        # Calcular opciones filtradas
-        filtradas = (
-            [o for o in opciones if filtro.lower() in o.lower()]
-            if filtro else opciones
-        )
-        mostradas = filtradas[:_MAX_OPCIONES]
-
-        # Cabecera del campo
-        header = Text(f"\n  {etiqueta}", style="bold cyan")
-        if sugerencia:
-            header.append(f"  [{sugerencia}]", style="dim")
-        consola.print(header)
-
-        if not opciones:
-            consola.print("    [dim](sin opciones en el Maestro — escribe el valor o Enter para vacío)[/dim]")
-        else:
-            for i, op in enumerate(mostradas, 1):
-                marcado = op == sugerencia
-                fila = f"    [dim]{i:2d}.[/dim] "
-                fila += f"[bold]{op}[/bold]" if marcado else op
-                consola.print(fila)
-
-            if len(filtradas) > _MAX_OPCIONES:
-                consola.print(
-                    f"    [dim]... {len(filtradas) - _MAX_OPCIONES} más. "
-                    "Escribe para filtrar.[/dim]"
-                )
-            if filtro:
-                consola.print(f"    [dim]Filtro: '{filtro}'[/dim]")
-
-        consola.print(
-            "    [dim]Nº[/dim] seleccionar · "
-            "[dim]texto[/dim] filtrar · "
-            "[dim]Enter[/dim] aceptar sugerencia · "
-            "[dim]s[/dim] saltar · "
-            "[dim]v[/dim] volver · "
-            "[dim]q[/dim] salir",
-            highlight=False,
-        )
-
-        try:
-            entrada = consola.input("  > ").strip()
-        except (EOFError, KeyboardInterrupt):
-            raise _Salir()
-
-        if entrada.lower() == "s":
-            raise _Saltar()
-        if entrada.lower() == "q":
-            raise _Salir()
-        if entrada.lower() == "v":
-            raise _Volver()
-
-        # Enter vacío → aceptar sugerencia (o cadena vacía)
-        if entrada == "":
-            return sugerencia
-
-        # Intentar número
-        try:
-            n = int(entrada)
-            if 1 <= n <= len(mostradas):
-                return mostradas[n - 1]
-            consola.print(f"  [red]Número fuera de rango (1-{len(mostradas)}).[/red]")
-            continue
-        except ValueError:
-            pass
-
-        # Usar como filtro o valor libre
-        coincidencias = [o for o in opciones if entrada.lower() in o.lower()]
-        if len(coincidencias) == 0:
-            # Sin coincidencias en el Maestro → aceptar como valor libre
-            return entrada
-        elif len(coincidencias) == 1:
-            return coincidencias[0]
-        else:
-            filtro = entrada
 
 
 # ---------------------------------------------------------------------------
@@ -358,18 +226,6 @@ def mostrar_resumen(movimientos: list[MovimientoCategorizado]) -> None:
         "[dim]·[/dim] sin sugerencia"
     )
     consola.print()
-
-
-def pedir_confirmacion_escritura(num_movimientos: int) -> bool:
-    """Pide confirmación final antes de escribir en el xlsx.
-
-    Returns True si el usuario confirma, False si cancela.
-    """
-    consola.print(
-        f"\n  Se van a escribir [bold cyan]{num_movimientos}[/bold cyan] "
-        "movimiento(s) en [bold]presupuesto.xlsx[/bold]."
-    )
-    return click.confirm("  ¿Continuar?", default=True)
 
 
 def pedir_registrar_revision(consola, cuenta: str, gestor, hoy: date) -> None:
